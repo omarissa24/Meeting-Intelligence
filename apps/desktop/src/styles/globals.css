@@ -1,3 +1,214 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system — locked once.
+ *
+ * Aesthetic: "instrument-grade tool with editorial calm."
+ * Warm-paper canvas, ink-black type, one disciplined amber accent for liveness,
+ * motion that settles rather than performs. Subsequent screens consume these
+ * semantic tokens via `bg-background`, `text-muted-foreground`, etc. — no
+ * hardcoded hex anywhere downstream.
+ */
+
+:root {
+  --background: oklch(0.985 0.012 80);
+  --foreground: oklch(0.22 0.015 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.015 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.015 260);
+  --primary: oklch(0.22 0.015 260);
+  --primary-foreground: oklch(0.985 0.012 80);
+  --secondary: oklch(0.95 0.012 80);
+  --secondary-foreground: oklch(0.28 0.015 260);
+  --muted: oklch(0.95 0.012 80);
+  --muted-foreground: oklch(0.52 0.012 260);
+  --accent: oklch(0.78 0.14 75);
+  --accent-foreground: oklch(0.22 0.015 260);
+  --destructive: oklch(0.55 0.20 27);
+  --destructive-foreground: oklch(0.985 0.012 80);
+  --border: oklch(0.89 0.008 260);
+  --input: oklch(0.89 0.008 260);
+  --ring: oklch(0.78 0.14 75);
+
+  --chart-1: oklch(0.78 0.14 75);
+  --chart-2: oklch(0.55 0.10 200);
+  --chart-3: oklch(0.45 0.12 30);
+  --chart-4: oklch(0.62 0.10 140);
+  --chart-5: oklch(0.45 0.12 290);
+
+  --sidebar: oklch(0.98 0.012 80);
+  --sidebar-foreground: oklch(0.22 0.015 260);
+  --sidebar-primary: oklch(0.22 0.015 260);
+  --sidebar-primary-foreground: oklch(0.985 0.012 80);
+  --sidebar-accent: oklch(0.95 0.012 80);
+  --sidebar-accent-foreground: oklch(0.28 0.015 260);
+  --sidebar-border: oklch(0.89 0.008 260);
+  --sidebar-ring: oklch(0.78 0.14 75);
+
+  /* Single non-shadcn token: the live-recording indicator.
+   * Distinct from --destructive (which is reserved for error states). */
+  --recording: oklch(0.62 0.20 25);
+  --recording-glow: oklch(0.62 0.20 25 / 0.35);
+
+  --radius: 0.625rem;
+
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --motion-slow: 420ms;
+  --motion-easing: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Instrument Serif", "IBM Plex Sans", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.dark {
+  --background: oklch(0.16 0.018 260);
+  --foreground: oklch(0.93 0.015 80);
+  --card: oklch(0.19 0.018 260);
+  --card-foreground: oklch(0.93 0.015 80);
+  --popover: oklch(0.19 0.018 260);
+  --popover-foreground: oklch(0.93 0.015 80);
+  --primary: oklch(0.93 0.015 80);
+  --primary-foreground: oklch(0.19 0.018 260);
+  --secondary: oklch(0.24 0.015 260);
+  --secondary-foreground: oklch(0.93 0.015 80);
+  --muted: oklch(0.24 0.015 260);
+  --muted-foreground: oklch(0.68 0.012 260);
+  --accent: oklch(0.82 0.13 75);
+  --accent-foreground: oklch(0.19 0.018 260);
+  --destructive: oklch(0.60 0.20 25);
+  --destructive-foreground: oklch(0.93 0.015 80);
+  --border: oklch(1 0 0 / 0.10);
+  --input: oklch(1 0 0 / 0.13);
+  --ring: oklch(0.82 0.13 75);
+
+  --chart-1: oklch(0.82 0.13 75);
+  --chart-2: oklch(0.65 0.10 200);
+  --chart-3: oklch(0.55 0.13 30);
+  --chart-4: oklch(0.70 0.10 140);
+  --chart-5: oklch(0.55 0.13 290);
+
+  --sidebar: oklch(0.18 0.018 260);
+  --sidebar-foreground: oklch(0.93 0.015 80);
+  --sidebar-primary: oklch(0.82 0.13 75);
+  --sidebar-primary-foreground: oklch(0.19 0.018 260);
+  --sidebar-accent: oklch(0.24 0.015 260);
+  --sidebar-accent-foreground: oklch(0.93 0.015 80);
+  --sidebar-border: oklch(1 0 0 / 0.10);
+  --sidebar-ring: oklch(0.82 0.13 75);
+
+  --recording: oklch(0.66 0.20 25);
+  --recording-glow: oklch(0.66 0.20 25 / 0.35);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-recording: var(--recording);
+  --color-recording-glow: var(--recording-glow);
+
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* "Breathes, doesn't strobe" — the recording indicator. */
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.55;
+      transform: scale(0.94);
+    }
+  }
+  .animate-breathe {
+    animation: breathe 1.6s ease-in-out infinite;
+  }
+
+  /* "Lines arrive, never appear." */
+  @keyframes line-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-line-in {
+    animation: line-in var(--motion-base) var(--motion-easing) both;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
