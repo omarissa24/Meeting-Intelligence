@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { startRecording, stopRecording } from "@/lib/tauri-commands";
-import {
-  connectTranscriptWs,
-  type TranscriptWsClient,
-  type WsReadyState,
-} from "@/lib/ws-client";
+import { connectTranscriptWs, type TranscriptWsClient, type WsReadyState } from "@/lib/ws-client";
 import { useRecordingStore } from "@/stores/recording-store";
 import { useTranscriptStore } from "@/stores/transcript-store";
 

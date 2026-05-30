@@ -47,11 +47,7 @@ export interface ClientTextProbe {
   text: string;
 }
 
-export type ClientWsMessage =
-  | ClientHello
-  | ClientBye
-  | ClientAudioChunk
-  | ClientTextProbe;
+export type ClientWsMessage = ClientHello | ClientBye | ClientAudioChunk | ClientTextProbe;
 
 export interface SessionStarted {
   type: "session_started";
@@ -85,11 +81,7 @@ export interface ServerError {
   recoverable: boolean;
 }
 
-export type ServerWsMessage =
-  | SessionStarted
-  | TranscriptLineMsg
-  | SessionEnded
-  | ServerError;
+export type ServerWsMessage = SessionStarted | TranscriptLineMsg | SessionEnded | ServerError;
 
 export type ClientMessageType = ClientWsMessage["type"];
 export type ServerMessageType = ServerWsMessage["type"];

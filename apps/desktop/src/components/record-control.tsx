@@ -40,7 +40,11 @@ export function RecordControl({ phase, elapsedMs, onStart, onStop }: RecordContr
             : "bg-foreground text-background hover:bg-foreground/85",
         )}
       >
-        {live ? <Square data-icon="inline-start" className="size-5 fill-current" /> : <Mic data-icon="inline-start" className="size-6" />}
+        {live ? (
+          <Square data-icon="inline-start" className="size-5 fill-current" />
+        ) : (
+          <Mic data-icon="inline-start" className="size-6" />
+        )}
       </Button>
 
       <div className="flex flex-col gap-1">

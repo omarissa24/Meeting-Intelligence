@@ -1,11 +1,6 @@
 import { create } from "zustand";
 
-export type RecordingPhase =
-  | "idle"
-  | "starting"
-  | "recording"
-  | "stopping"
-  | "stopped";
+export type RecordingPhase = "idle" | "starting" | "recording" | "stopping" | "stopped";
 
 export interface RecordingState {
   phase: RecordingPhase;

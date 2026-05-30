@@ -16,20 +16,13 @@ export function SettingsSheet() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Open settings"
-        >
+        <Button type="button" variant="ghost" size="icon" aria-label="Open settings">
           <Settings className="size-4" />
         </Button>
       </SheetTrigger>
       <SheetContent>
         <SheetHeader>
-          <SheetTitle className="font-display text-2xl font-normal">
-            Settings
-          </SheetTitle>
+          <SheetTitle className="font-display text-2xl font-normal">Settings</SheetTitle>
           <SheetDescription>
             Foundation slice — most controls land in subsequent phases.
           </SheetDescription>
@@ -40,9 +33,7 @@ export function SettingsSheet() {
               Backend
             </h3>
             <div className="rounded-md border border-border bg-card px-3 py-2">
-              <p className="font-mono text-xs text-foreground break-all">
-                {BACKEND_HTTP_URL}
-              </p>
+              <p className="font-mono text-xs text-foreground break-all">{BACKEND_HTTP_URL}</p>
             </div>
             <p className="text-xs text-muted-foreground">
               Override via the <code>VITE_BACKEND_URL</code> env var.
@@ -51,9 +42,7 @@ export function SettingsSheet() {
 
           <section className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-foreground">
-                Use local STT
-              </span>
+              <span className="text-sm font-medium text-foreground">Use local STT</span>
               <span className="text-xs text-muted-foreground">
                 Faster-Whisper on device. Coming in a later slice.
               </span>
@@ -62,12 +51,8 @@ export function SettingsSheet() {
           </section>
 
           <section className="mt-auto flex flex-col gap-1 pt-4">
-            <span className="text-xs text-muted-foreground">
-              Client version
-            </span>
-            <span className="font-mono text-xs text-foreground">
-              {CLIENT_VERSION}
-            </span>
+            <span className="text-xs text-muted-foreground">Client version</span>
+            <span className="font-mono text-xs text-foreground">{CLIENT_VERSION}</span>
           </section>
         </div>
       </SheetContent>

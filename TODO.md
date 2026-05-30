@@ -13,11 +13,11 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 ### User Stories
 
 - [ ] **US-01 — Start a recording session with one click**
-  - [ ] Record button visible in main window at all times
+  - [x] Record button visible in main window at all times
   - [ ] First-launch triggers OS permission prompts for microphone and screen audio
   - [ ] Recording begins within 2 seconds of permission grant
-  - [ ] UI shows pulsing red indicator + elapsed-time counter while recording
-  - [ ] Button toggles to Stop while recording is in progress
+  - [x] UI shows pulsing red indicator + elapsed-time counter while recording
+  - [x] Button toggles to Stop while recording is in progress
 - [ ] **US-02 — See live transcript appear on screen**
   - [ ] Transcript lines appear with ≤1.5 s latency from speech
   - [ ] Each line shows the diarisation speaker label (e.g. `Speaker 1`)
@@ -55,7 +55,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 
 ### Functional Requirements
 
-- [ ] **FR-1.01 (Must)** Tauri shell provides single-window UI with Record, Stop, Settings
+- [x] **FR-1.01 (Must)** Tauri shell provides single-window UI with Record, Stop, Settings
 - [ ] **FR-1.02 (Must)** Rust capture layer captures system loopback + mic as separate streams
 - [ ] **FR-1.03 (Must)** Both streams mixed and resampled to 16 kHz mono PCM before transmission
 - [ ] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission

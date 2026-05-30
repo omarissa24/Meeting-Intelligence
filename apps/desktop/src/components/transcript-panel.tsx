@@ -4,7 +4,13 @@ import type { TranscriptLine } from "@meeting-intelligence/shared-types";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useTranscriptStore } from "@/stores/transcript-store";
@@ -47,10 +53,7 @@ export function TranscriptPanel() {
           <ScrollArea ref={scrollRef} className="h-full">
             <ol className="flex flex-col gap-3 px-6 py-5">
               {lines.map((line, idx) => (
-                <TranscriptItem
-                  key={`${line.sessionId}-${idx}`}
-                  line={line}
-                />
+                <TranscriptItem key={`${line.sessionId}-${idx}`} line={line} />
               ))}
             </ol>
           </ScrollArea>
@@ -63,10 +66,7 @@ export function TranscriptPanel() {
 function TranscriptItem({ line }: { line: TranscriptLine }) {
   return (
     <li className="animate-line-in flex gap-3">
-      <Badge
-        variant="secondary"
-        className="h-fit shrink-0 font-normal tabular-nums tracking-tight"
-      >
+      <Badge variant="secondary" className="h-fit shrink-0 font-normal tabular-nums tracking-tight">
         {speakerLabel(line.speakerId)}
       </Badge>
       <p
@@ -88,12 +88,9 @@ function EmptyView() {
         <EmptyMedia variant="icon">
           <CaptionsOff />
         </EmptyMedia>
-        <EmptyTitle className="font-display text-xl font-normal">
-          Nothing said yet
-        </EmptyTitle>
+        <EmptyTitle className="font-display text-xl font-normal">Nothing said yet</EmptyTitle>
         <EmptyDescription>
-          Press record to start a session. Live transcript appears here as the
-          meeting unfolds.
+          Press record to start a session. Live transcript appears here as the meeting unfolds.
         </EmptyDescription>
       </EmptyHeader>
     </Empty>

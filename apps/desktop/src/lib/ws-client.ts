@@ -1,7 +1,4 @@
-import type {
-  ClientWsMessage,
-  ServerWsMessage,
-} from "@meeting-intelligence/shared-types";
+import type { ClientWsMessage, ServerWsMessage } from "@meeting-intelligence/shared-types";
 
 import { BACKEND_WS_URL, CLIENT_VERSION } from "./config";
 
