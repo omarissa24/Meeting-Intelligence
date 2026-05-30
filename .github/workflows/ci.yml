@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (lint + typecheck + test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.5"
+          enable-cache: true
+      - name: Set Python version
+        run: uv python install 3.12
+      - name: Sync dependencies
+        run: uv sync --frozen
+      - name: Ruff
+        run: uv run ruff check
+      - name: Mypy
+        run: uv run mypy src
+      - name: Pytest
+        run: uv run pytest
+
+  desktop:
+    name: Desktop (typecheck + web build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck shared-types
+        run: pnpm --filter @meeting-intelligence/shared-types typecheck
+      - name: Typecheck desktop
+        run: pnpm --filter @meeting-intelligence/desktop typecheck
+      - name: Web build (Vite only — Tauri bundle runs in desktop-release.yml)
+        run: pnpm --filter @meeting-intelligence/desktop build
