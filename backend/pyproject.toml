@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.1",
+    "deepgram-sdk>=4.0.0",
 ]
 
 [project.optional-dependencies]

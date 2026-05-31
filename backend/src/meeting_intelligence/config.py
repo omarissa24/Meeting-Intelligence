@@ -4,6 +4,8 @@ Loaded from environment / `.env`. All fields are optional at scaffold time —
 each phase tightens its required subset as it wires real integrations.
 """
 
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +35,11 @@ class Settings(BaseSettings):
     # External providers
     deepgram_api_key: str | None = None
     anthropic_api_key: str | None = None
+
+    # STT selection. "echo" routes through InMemoryEchoSTT (default, no key
+    # required); "deepgram" routes through DeepgramNovaSTT and requires
+    # deepgram_api_key to be set.
+    stt_provider: Literal["echo", "deepgram"] = "echo"
 
     # Auth
     workos_api_key: str | None = None
