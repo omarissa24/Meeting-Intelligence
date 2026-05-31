@@ -31,6 +31,32 @@ uv run ruff check
 uv run mypy src
 ```
 
+## STT provider selection
+
+`STT_PROVIDER` picks the implementation injected by `api/deps.py`:
+
+- `echo` (default) — `InMemoryEchoSTT`. No key required; the route emits a
+  synthetic ticker and echoes any `audio_chunk` as a fake transcript line.
+- `deepgram` — `DeepgramNovaSTT` streaming against Nova-2. Requires
+  `DEEPGRAM_API_KEY` in `.env`; the route streams real audio_chunks through.
+
+```dotenv
+# backend/.env
+STT_PROVIDER=deepgram
+DEEPGRAM_API_KEY=...
+```
+
+To verify end-to-end without native capture, use the bundled WAV replay tool.
+Source audio must be 16 kHz mono 16-bit PCM (convert with
+`ffmpeg -i in.mp3 -ar 16000 -ac 1 -acodec pcm_s16le out.wav`):
+
+```bash
+uv run python scripts/replay_audio.py /tmp/sample.wav
+```
+
+The script connects as a real WS client, streams the WAV at real-time
+cadence, and prints each `transcript_line` as it arrives.
+
 ## Layout
 
 ```

@@ -60,8 +60,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **FR-1.03 (Must)** Both streams mixed and resampled to 16 kHz mono PCM before transmission
 - [ ] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission
 - [ ] **FR-1.05 (Must)** Processed audio sent over secure WebSocket to FastAPI gateway in 1-second payloads
-- [ ] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
-- [ ] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
+- [x] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
+- [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
 - [ ] **FR-1.08 (Must)** UI renders transcript lines with max display latency of 1.5 s
 - [ ] **FR-1.09 (Should)** Interim results visually distinguished from final results
 - [ ] **FR-1.10 (Must)** WebSocket implements exponential backoff reconnection, max retry 5 minutes
