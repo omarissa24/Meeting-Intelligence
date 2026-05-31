@@ -5,6 +5,7 @@ Uses FastAPI's TestClient (sync WS API). The synthetic ticker emits every
 than asserting on frame order.
 """
 
+import base64
 import json
 
 import pytest
@@ -96,3 +97,72 @@ def test_hello_session_id_mismatch_is_rejected(client: TestClient) -> None:
         assert first["code"] == "INVALID_HELLO"
         with pytest.raises(WebSocketDisconnect):
             ws.receive_text()
+
+
+def test_audio_chunk_routes_through_echo_provider(client: TestClient) -> None:
+    """The route base64-decodes audio_chunk, feeds it to stt.transcribe(),
+    and forwards each yielded TranscriptEvent as a transcript_line.
+
+    InMemoryEchoSTT yields exactly one event per chunk with speaker_id="echo",
+    so three chunks in should produce three echo lines out.
+    """
+    silence_1s = base64.b64encode(b"\x00" * 32000).decode("ascii")  # ~1s @ 16kHz/16-bit mono
+
+    with client.websocket_connect("/transcript/ws/sess-audio") as ws:
+        ws.send_text(json.dumps(_hello("sess-audio")))
+        started = json.loads(ws.receive_text())
+        assert started["type"] == "session_started"
+
+        for seq in range(1, 4):
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "audio_chunk",
+                        "sessionId": "sess-audio",
+                        "seq": seq,
+                        "pcmBase64": silence_1s,
+                    }
+                )
+            )
+
+        echo_lines: list[dict] = []
+        # Filter ticker lines (they have speaker_id="spk-1"/"spk-2") and keep
+        # only echoes (speaker_id="echo"); 3 chunks → 3 echoes.
+        for _ in range(30):
+            frame = json.loads(ws.receive_text())
+            if frame["type"] == "transcript_line" and frame["line"]["speakerId"] == "echo":
+                echo_lines.append(frame["line"])
+                if len(echo_lines) == 3:
+                    break
+        assert len(echo_lines) == 3
+        assert all(line["isFinal"] for line in echo_lines)
+
+        ws.send_text(json.dumps({"type": "client_bye", "sessionId": "sess-audio"}))
+
+
+def test_invalid_base64_audio_chunk_emits_error(client: TestClient) -> None:
+    with client.websocket_connect("/transcript/ws/sess-bad-audio") as ws:
+        ws.send_text(json.dumps(_hello("sess-bad-audio")))
+        _started = json.loads(ws.receive_text())
+
+        ws.send_text(
+            json.dumps(
+                {
+                    "type": "audio_chunk",
+                    "sessionId": "sess-bad-audio",
+                    "seq": 1,
+                    "pcmBase64": "not valid base64!!!",
+                }
+            )
+        )
+
+        for _ in range(20):
+            frame = json.loads(ws.receive_text())
+            if frame["type"] == "error":
+                assert frame["code"] == "INVALID_AUDIO"
+                assert frame["recoverable"] is True
+                break
+        else:
+            pytest.fail("never received INVALID_AUDIO error")
+
+        ws.send_text(json.dumps({"type": "client_bye", "sessionId": "sess-bad-audio"}))
