@@ -16,6 +16,7 @@
     "tauri:dev": "pnpm --filter @meeting-intelligence/desktop tauri:dev",
     "replay": "cd backend && uv run python scripts/replay_audio.py",
     "fixture": "bash scripts/make-fixture-wav.sh",
+    "icons": "bash scripts/make-tauri-icons.sh",
     "test:api": "cd backend && uv run pytest",
     "test:ui": "pnpm --filter @meeting-intelligence/desktop test",
     "test": "pnpm test:api && pnpm test:ui",
