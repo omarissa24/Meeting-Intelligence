@@ -38,7 +38,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] No additional drivers or software required after install
 - [ ] **US-05 — Automatic silence filtering**
   - [x] VAD runs locally on every 20 ms frame before transmission
-  - [x] Silence frames dropped and not transmitted to STT
+  - ~~- [x] Silence frames dropped and not transmitted to STT~~ — reverted: dropping silence collapses the audio stream and breaks Deepgram's endpointing. VAD now runs for stats only; bandwidth-saving drop will return on the MP3-archive path (FR-2.06).
   - [ ] VAD sensitivity tunable via settings value (not user-exposed in MVP)
   - [ ] Silence filtering reduces transmitted audio ≥30% in typical meetings
 - [ ] **US-06 — Connection loss recovery**
@@ -58,7 +58,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-1.01 (Must)** Tauri shell provides single-window UI with Record, Stop, Settings
 - [x] **FR-1.02 (Must)** Rust capture layer captures system loopback + mic as separate streams
 - [x] **FR-1.03 (Must)** Both streams mixed and resampled to 16 kHz mono PCM before transmission
-- [x] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission
+- [ ] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission — VAD runs but drop is disabled in the live STT path (collapsing time breaks Deepgram); revisit once MP3-archive path lands and can host the bandwidth-optimized encode.
 - [x] **FR-1.05 (Must)** Processed audio sent over secure WebSocket to FastAPI gateway in 1-second payloads
 - [x] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
 - [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
@@ -272,6 +272,14 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] User can set transcription language (default auto-detect)
   - [ ] Settings changes take effect at start of next recording session
   - [ ] Settings persisted locally and survive app updates
+- [ ] **US-25a — Real-time mic level meter in the Record control**
+  - [ ] Live dBFS bar meter visible while recording (Record control area)
+  - [ ] Reads from a new Tauri event `audio://level` emitted ~10 Hz from the audio pipeline
+  - [ ] Displays both `mic_raw` (device peak) and `mic_resampled` (post-gain, what STT sees)
+  - [ ] Visual states: green (-18 to -6 dBFS), yellow (<-18 or >-3), red (clipping or near-floor)
+  - [ ] Yellow/red triggers a one-line hint pointing the user to System Settings → Sound → Input
+  - [ ] Subscribe pattern matches the existing `audio://chunk` / `audio://error` flow in `apps/desktop/src/lib/audio-bridge.ts`
+  - [ ] Decoupled from the static-gain compensation; meter is purely informational
 - [ ] **US-26 — Meeting participants are listed**
   - [ ] Meeting detail view has Participants section listing all detected speaker labels
   - [ ] User can rename a speaker label to a real name (`Speaker 1` → `Omar`)

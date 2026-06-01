@@ -156,6 +156,12 @@ export function useRecording() {
     teardownWs();
     try {
       const result = await stopRecording();
+      // Surface capture-side stats in dev so the operator can read them
+      // directly in the devtools console without having to inspect the
+      // IPC reply.
+      if (result.stats) {
+        console.info("[stop] session stats", result.stats);
+      }
       confirmStop({ endedAt: result.endedAt, durationMs: result.durationMs });
     } catch (err) {
       // Stop should always land — if the Rust side reports NotRecording, fall

@@ -96,6 +96,32 @@ Surfaced via the existing `audio://error` event with `code=AUDIO_DROP`, `recover
 - **Tauri emit failure** — frontend can't keep up with chunks; rare in practice.
 - **Pipeline output channel full** — DSP thread can't push fast enough; usually means VAD is wrongly detecting voice in everything or chunk_rx isn't being drained.
 
+## Microphone gain
+
+macOS defaults the input-volume slider to ~50%, which lands typical speech around -24 dBFS peak — quiet enough that Nova-2 starts dropping words. The pipeline applies a static **+6 dB** boost on the mic path between the downmix and the mixer, which lifts speech to ~-18 dBFS (Deepgram's sweet spot). The boost is logged at session start:
+
+```
+audio/pipeline: mic gain = +6.0 dB (linear ~1.995)
+```
+
+**Override with `MIC_GAIN_DB`.** Set this env var before launching `pnpm tauri:dev` to use a different value:
+
+```bash
+MIC_GAIN_DB=12 pnpm tauri:dev   # +12 dB ~4x; for very quiet mics
+MIC_GAIN_DB=0  pnpm tauri:dev   # disable boost; for already-loud mics
+MIC_GAIN_DB=-3 pnpm tauri:dev   # negative = attenuate; clip-safe for hot mics
+```
+
+Invalid values (`garbage`, `NaN`, empty) log a warning and fall back to +6 dB.
+
+**Verifying it's working.** Compare the two level-meter rows in the dev-console output:
+- `audio/level mic_raw` — what the mic device emits before any gain.
+- `audio/level mic_resampled` — post-gain, what's sent to the mixer/encoder/STT.
+
+The gap between `mic_raw peak` and `mic_resampled peak` should match the configured gain (~6 dB by default). A larger or smaller gap signals a regression.
+
+**Known limitation: clipping on loud mics.** The encoder hard-clamps at ±1.0 (`encoder.rs::f32_to_i16`). Users with high macOS input volume + +6 dB will hear mild clipping on loud syllables. Accepted trade for Phase 1 — the polished real-time level meter (US-25a) and AGC-style dynamic gain are deferred. If a user reports clipping, set `MIC_GAIN_DB=0` for them as a workaround.
+
 ## Reading the latency numbers honestly
 
 Two complementary metrics:

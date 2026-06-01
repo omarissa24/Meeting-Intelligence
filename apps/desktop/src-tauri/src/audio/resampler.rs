@@ -71,14 +71,17 @@ impl SourceResampler {
             window,
         };
 
-        // chunk_size=1024 is the rubato examples' default; with FixedAsync::Output
-        // it's a hint, not a hard cap, and rubato resizes its internal
-        // buffers as needed.
+        // In `FixedAsync::Output` mode, `chunk_size` is the fixed number
+        // of OUTPUT frames every `process_into_buffer` call produces.
+        // Downstream (VAD) wants exactly 320-sample chunks (20 ms @ 16 kHz),
+        // so we size the resampler to that — NOT to rubato's example
+        // default of 1024, which would make every call demand a 1024-slot
+        // output buffer the pipeline doesn't allocate.
         let inner = Async::<f32>::new_sinc(
             resample_ratio,
             1.0, // resample ratio is fixed, so max_relative_ratio = 1.0
             &params,
-            1024,
+            FIXED_OUTPUT_FRAMES,
             1, // mono
             FixedAsync::Output,
         )
@@ -181,5 +184,46 @@ impl SourceResampler {
             out_chunks += 1;
         }
         Ok(out_chunks)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Locks the contract the pipeline relies on: at common cpal rates the
+    /// resampler must accept exactly `FIXED_OUTPUT_FRAMES` slots of output.
+    /// If `chunk_size` ever drifts back to rubato's example default of
+    /// 1024, this test catches it.
+    #[test]
+    fn process_accepts_a_fixed_output_frames_buffer_at_common_rates() {
+        for &rate in &[44_100u32, 48_000u32] {
+            let mut r = SourceResampler::new(rate).expect("construct");
+            let needed = r.input_frames_next();
+            let input = vec![0.0f32; needed];
+            let mut output = vec![0.0f32; FIXED_OUTPUT_FRAMES];
+            let written = r
+                .process_one_chunk(&input, &mut output)
+                .unwrap_or_else(|e| panic!("process at {rate}Hz failed: {e}"));
+            assert_eq!(
+                written, FIXED_OUTPUT_FRAMES,
+                "FixedAsync::Output must produce exactly {FIXED_OUTPUT_FRAMES} frames at {rate}Hz",
+            );
+        }
+    }
+
+    #[test]
+    fn push_and_drain_emits_320_sample_chunks() {
+        let mut r = SourceResampler::new(48_000).expect("construct");
+        // Feed ~1 s of audio at 48 kHz — should produce at least one 320-sample chunk.
+        let input = vec![0.0f32; 48_000];
+        let mut chunk_lens = Vec::new();
+        let n = r
+            .push_and_drain(&input, |chunk| chunk_lens.push(chunk.len()))
+            .expect("push_and_drain");
+        assert!(n > 0, "expected at least one output chunk");
+        for len in &chunk_lens {
+            assert_eq!(*len, FIXED_OUTPUT_FRAMES, "every chunk must be 320 samples");
+        }
     }
 }

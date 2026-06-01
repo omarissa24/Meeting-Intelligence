@@ -22,8 +22,11 @@ import contextlib
 import itertools
 import json
 import logging
+import os
+import wave
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -48,6 +51,12 @@ _AUDIO_QUEUE_MAX = 64
 # How long to wait for the transcribe consumer to drain trailing events
 # after the client signals end-of-stream.
 _DRAIN_TIMEOUT_S = 2.0
+
+# Opt-in WAV dump of the raw PCM the route receives — exactly what the
+# STT provider sees. Set AUDIO_DUMP_DIR to enable; one .wav file per
+# session is written there. Used to verify byte-level audio fidelity
+# when STT returns empty transcripts despite healthy desktop levels.
+_AUDIO_DUMP_DIR = os.environ.get("AUDIO_DUMP_DIR")
 
 
 # --- Client → server payloads (mirror packages/shared-types/src/ws.ts) ---
@@ -269,6 +278,25 @@ async def transcript_ws(
     stt_failed = False
     stt_failure_msg = ""
 
+    # Optional debug WAV writer — one per session when AUDIO_DUMP_DIR is set.
+    # Lets the operator listen to exactly what we feed Deepgram, byte for byte.
+    wav_writer: wave.Wave_write | None = None
+    if _AUDIO_DUMP_DIR:
+        try:
+            dump_dir = Path(_AUDIO_DUMP_DIR)
+            dump_dir.mkdir(parents=True, exist_ok=True)
+            wav_path = dump_dir / f"{session_id}.wav"
+            wav_writer = wave.open(str(wav_path), "wb")
+            wav_writer.setnchannels(1)
+            wav_writer.setsampwidth(2)  # 16-bit PCM
+            wav_writer.setframerate(16_000)
+            log.info("transcript.audio_dump_open session_id=%s path=%s", session_id, wav_path)
+        except OSError as exc:
+            log.warning(
+                "transcript.audio_dump_failed session_id=%s err=%s", session_id, exc
+            )
+            wav_writer = None
+
     async def send_transcript_event(event: TranscriptEvent) -> None:
         # ↓ Phase 3 LangGraph insertion point: every event flows through here,
         # whether minted by the synthetic ticker, by a text_probe, or by real
@@ -364,6 +392,16 @@ async def transcript_ws(
                     msg.seq,
                     len(pcm),
                 )
+                if wav_writer is not None:
+                    try:
+                        wav_writer.writeframes(pcm)
+                    except OSError as exc:
+                        log.warning(
+                            "transcript.audio_dump_write_failed session_id=%s err=%s",
+                            session_id,
+                            exc,
+                        )
+                        wav_writer = None
                 try:
                     audio_queue.put_nowait(pcm)
                 except asyncio.QueueFull:
@@ -412,6 +450,11 @@ async def transcript_ws(
             consumer_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await consumer_task
+
+        if wav_writer is not None:
+            with contextlib.suppress(Exception):
+                wav_writer.close()
+            log.info("transcript.audio_dump_close session_id=%s", session_id)
 
     ended_at_monotonic = asyncio.get_event_loop().time()
     duration_ms = max(0, int((ended_at_monotonic - started_at_monotonic) * 1000))

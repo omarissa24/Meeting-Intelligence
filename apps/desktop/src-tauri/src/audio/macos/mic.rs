@@ -106,7 +106,22 @@ impl MicSource for CpalMicSource {
         let device = host
             .default_input_device()
             .ok_or_else(|| SourceError::DeviceUnavailable("no default input device".into()))?;
+        // `name()` is deprecated in favor of `description()` / `id()`, but the
+        // newer methods aren't on the trait yet at our pinned cpal version.
+        // Silence the warning at the call site rather than across the file.
+        #[allow(deprecated)]
+        let device_name = device.name().unwrap_or_else(|_| "<unknown>".into());
         let (config, _format) = Self::pick_config(&device)?;
+
+        // Log the cpal config we ended up with so the operator can see
+        // exactly what the device reported (rate + channel count). With
+        // a stereo or aggregate device, the channel count drives a
+        // downstream downmix that divides by N — which can attenuate
+        // the signal if N > 1 channels are populated identically.
+        eprintln!(
+            "audio/mic: opening device='{device_name}' rate={} channels={}",
+            config.sample_rate, config.channels,
+        );
 
         let format = AudioFormat {
             sample_rate: config.sample_rate,
