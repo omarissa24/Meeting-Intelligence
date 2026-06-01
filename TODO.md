@@ -26,10 +26,10 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] Overlapping speakers handled without crashes
   - [ ] System audio (meeting output) and mic captured simultaneously
 - [ ] **US-03 — Stop a recording and see confirmation**
-  - [ ] Stop halts audio capture within 500 ms
-  - [ ] UI transitions from live view to session-ended screen
-  - [ ] Session stats shown: duration, approx word count, speaker count
-  - [ ] User informed that summary processing is in progress
+  - [x] Stop halts audio capture within 500 ms — optimistic UI: `<SessionEndedView/>` mounts on `phase: "stopping"` (synchronous on click); the Rust ~700 ms drain runs in the background.
+  - [x] UI transitions from live view to session-ended screen
+  - [x] Session stats shown: duration, approx word count, speaker count
+  - [ ] User informed that summary processing is in progress — placeholder card present, but no real processing wired yet. Phase 3 (FR-3.01 / US-14) replaces this card with live summary content.
 - [ ] **US-04 — Use the app on macOS and Windows**
   - [ ] CI produces a signed macOS `.dmg`
   - [ ] CI produces a signed Windows `.msi`

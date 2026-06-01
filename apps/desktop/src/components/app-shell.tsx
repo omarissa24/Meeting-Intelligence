@@ -5,6 +5,7 @@ import { ConnectionStatus } from "@/components/connection-status";
 import { PermissionPrompt } from "@/components/permission-prompt";
 import { ReconnectBanner } from "@/components/reconnect-banner";
 import { RecordControl } from "@/components/record-control";
+import { SessionEndedView } from "@/components/session-ended-view";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
 import { useRecording } from "@/hooks/use-recording";
@@ -21,6 +22,13 @@ export function AppShell() {
   } = useRecording();
 
   const [permPromptOpen, setPermPromptOpen] = useState(false);
+
+  // Treat `stopping` and `stopped` as one rendering branch — the user
+  // perceives "I clicked Stop" as instantaneous; the SessionEndedView
+  // mounts on the same paint as the click. The Rust drain finishes in
+  // the background and the precise durationMs lands when confirmStop
+  // runs.
+  const isSessionEnded = phase === "stopping" || phase === "stopped";
 
   // Auto-open the explainer dialog whenever the user lands in
   // not-determined territory — either on first launch or after the
@@ -83,17 +91,19 @@ export function AppShell() {
       </header>
 
       <main className="flex flex-1 flex-col gap-6 overflow-hidden px-8 pb-6">
-        <section className="flex justify-center py-6">
-          <RecordControl
-            phase={phase}
-            elapsedMs={elapsedMs}
-            onStart={handleStart}
-            onStop={handleStop}
-          />
-        </section>
+        {!isSessionEnded ? (
+          <section className="flex justify-center py-6">
+            <RecordControl
+              phase={phase}
+              elapsedMs={elapsedMs}
+              onStart={handleStart}
+              onStop={handleStop}
+            />
+          </section>
+        ) : null}
         <ReconnectBanner onRetry={handleRetry} />
         <section className="min-h-0 flex-1">
-          <TranscriptPanel />
+          {isSessionEnded ? <SessionEndedView /> : <TranscriptPanel />}
         </section>
       </main>
 
