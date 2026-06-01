@@ -13,6 +13,13 @@
 //! Only `traits` and the macOS sources land in this commit; the rest follow
 //! in subsequent slices once the spike has confirmed SCKit gives us f32 PCM.
 
+// The audio modules expose a few APIs that aren't yet exercised by
+// the controller (e.g. `VadGate::reset` for re-recording, `next_seq`
+// for resume telemetry, `EVENT_AUDIO_ERROR`). Allow dead-code at
+// module scope so the controller layer can wire them in subsequent
+// slices without re-adding files.
+#![allow(dead_code)]
+
 pub mod encoder;
 pub mod mixer;
 pub mod pipeline;

@@ -23,6 +23,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use block2::RcBlock;
+use objc2::runtime::Bool;
 use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
 use screencapturekit::shareable_content::SCShareableContent;
 use serde::Serialize;
@@ -87,7 +88,7 @@ pub fn request_mic() -> Result<PermState, PermissionError> {
     // dispatch queue — Apple's docs explicitly call this out.
     let pair: Arc<(Mutex<Option<bool>>, Condvar)> = Arc::new((Mutex::new(None), Condvar::new()));
     let pair_for_block = pair.clone();
-    let handler = RcBlock::new(move |granted: block2::Bool| {
+    let handler = RcBlock::new(move |granted: Bool| {
         let (lock, cvar) = &*pair_for_block;
         let mut slot = lock.lock().expect("permissions condvar poisoned");
         *slot = Some(granted.as_bool());

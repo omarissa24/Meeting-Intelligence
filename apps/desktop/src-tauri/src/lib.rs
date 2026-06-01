@@ -59,6 +59,9 @@ enum CommandError {
     Audio(String),
     #[error("permissions: {0}")]
     Permissions(String),
+    /// Constructed only on non-macOS targets; we keep it on macOS too
+    /// so the error type stays uniform across platforms.
+    #[allow(dead_code)]
     #[error("native audio capture is not implemented on this platform yet")]
     UnsupportedPlatform,
 }

@@ -140,7 +140,7 @@ impl SystemSource for SCKitSystemSource {
             .stream
             .lock()
             .map_err(|e| SourceError::Platform(format!("stream mutex poisoned: {e}")))?;
-        let mut stream = guard.take().ok_or(SourceError::NotRunning)?;
+        let stream = guard.take().ok_or(SourceError::NotRunning)?;
         stream
             .stop_capture()
             .map_err(|e| SourceError::Platform(format!("stop_capture: {e:?}")))?;

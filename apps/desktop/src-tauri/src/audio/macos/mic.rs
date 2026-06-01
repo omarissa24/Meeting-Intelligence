@@ -109,7 +109,7 @@ impl MicSource for CpalMicSource {
         let (config, _format) = Self::pick_config(&device)?;
 
         let format = AudioFormat {
-            sample_rate: config.sample_rate.0,
+            sample_rate: config.sample_rate,
             channels: config.channels,
             format: SampleFormat::F32Interleaved,
         };

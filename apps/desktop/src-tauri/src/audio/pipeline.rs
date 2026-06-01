@@ -25,9 +25,7 @@ use std::time::{Duration, Instant};
 
 use crate::audio::encoder::{ChunkEncoder, EncodedChunk, EncoderStats};
 use crate::audio::mixer::{Mixer, MixerStats};
-use crate::audio::resampler::{
-    ResamplerError, SourceResampler, FIXED_OUTPUT_FRAMES, TARGET_RATE,
-};
+use crate::audio::resampler::{SourceResampler, FIXED_OUTPUT_FRAMES, TARGET_RATE};
 use crate::audio::traits::{AudioFrame, SourceKind};
 use crate::audio::vad::{VadGate, Verdict};
 

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<!--
+  Info.plist additions merged into the bundled app's Info.plist by
+  tauri-build. Tauri auto-discovers this file when it lives in the
+  same directory as tauri.conf.json (see tauri-utils MacConfig docs
+  comment on `info_plist`). Do NOT reference it from
+  bundle.macOS.infoPlist — that field expects a path string, but
+  the auto-discovery is the cleaner integration point.
+
+  Strings show up verbatim in the macOS permission prompts. Apple's
+  privacy guidelines (which we'll need to comply with for App Store
+  distribution later) require an explanation, not just a function
+  name.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Meeting Intelligence captures your microphone so meeting audio can be transcribed locally before any data leaves your machine.</string>
+
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Meeting Intelligence captures the audio from your meetings (Zoom, Teams, Meet, etc.) via macOS screen capture so the conversation can be transcribed.</string>
+
+    <key>NSScreenRecordingUsageDescription</key>
+    <string>Meeting Intelligence needs screen recording access to capture system audio from meetings — only audio is read; the screen image is discarded.</string>
+</dict>
+</plist>

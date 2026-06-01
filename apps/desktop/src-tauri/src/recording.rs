@@ -23,6 +23,11 @@
 //! `cfg(target_os = "windows")` branch when WASAPI lands.
 
 #![cfg(target_os = "macos")]
+// Audio-error event surface, session-id accessor, and the
+// AlreadyRunning variant are intentionally public for the next
+// slice (UI toast wiring + race-detection), even though they
+// aren't called yet from lib.rs.
+#![allow(dead_code)]
 
 use std::sync::mpsc::Receiver;
 use std::thread::JoinHandle;
