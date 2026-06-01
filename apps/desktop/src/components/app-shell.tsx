@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { ConnectionStatus } from "@/components/connection-status";
 import { PermissionPrompt } from "@/components/permission-prompt";
+import { ReconnectBanner } from "@/components/reconnect-banner";
 import { RecordControl } from "@/components/record-control";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
@@ -12,7 +13,6 @@ export function AppShell() {
   const {
     phase,
     elapsedMs,
-    wsState,
     error,
     permissionState,
     start,
@@ -50,6 +50,12 @@ export function AppShell() {
     void stop();
   };
 
+  const handleRetry = () => {
+    // After a `failed` phase the recording store is already `stopped`
+    // (auto-stop ran). Just kick off a fresh session.
+    void start();
+  };
+
   const handlePermissionRequest = async () => {
     const next = await requestPermissions();
     if (next === "granted") {
@@ -85,6 +91,7 @@ export function AppShell() {
             onStop={handleStop}
           />
         </section>
+        <ReconnectBanner onRetry={handleRetry} />
         <section className="min-h-0 flex-1">
           <TranscriptPanel />
         </section>
@@ -94,7 +101,7 @@ export function AppShell() {
         <span className="text-muted-foreground">
           16 kHz mono PCM · 1 s payloads · in-memory echo
         </span>
-        <ConnectionStatus state={wsState} />
+        <ConnectionStatus />
       </footer>
 
       <PermissionPrompt

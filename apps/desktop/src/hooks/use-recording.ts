@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import {
   subscribeAudioChunks,
   subscribeAudioErrors,
   type AudioChunkPayload,
 } from "@/lib/audio-bridge";
+import {
+  createReconnectingWsClient,
+  type ReconnectingWsClient,
+} from "@/lib/reconnecting-ws-client";
 import {
   checkAudioPermissions,
   requestAudioPermissions,
@@ -14,10 +18,8 @@ import {
   type PermState,
 } from "@/lib/tauri-commands";
 import {
-  connectTranscriptWs,
-  type TranscriptWsClient,
-  type WsReadyState,
-} from "@/lib/ws-client";
+  useConnectionStore,
+} from "@/stores/connection-store";
 import {
   useRecordingStore,
   type AudioPermissionState,
@@ -28,11 +30,11 @@ import { useTranscriptStore } from "@/stores/transcript-store";
  * Glue between the Zustand stores, the Tauri commands, the audio
  * bridge, and the /transcript/ws connection. Owns: the elapsed-ms
  * ticker, the WS lifecycle, the audio-chunk subscription, the
- * audio-error subscription, and the permission flow.
+ * audio-error subscription, the permission flow, and the auto-stop
+ * fallback when the reconnect budget is exhausted.
  *
- * Components consume primitive state and stable `start`/`stop`
- * callbacks — they don't need to know about any of the side-channel
- * subscriptions.
+ * Connection state lives in `connection-store`, not here — the WS
+ * client is the sole writer.
  */
 export function useRecording() {
   const phase = useRecordingStore((s) => s.phase);
@@ -53,15 +55,24 @@ export function useRecording() {
   const tick = useRecordingStore((s) => s.tick);
 
   const appendLine = useTranscriptStore((s) => s.appendLine);
+  const appendSystemNote = useTranscriptStore((s) => s.appendSystemNote);
   const clearLines = useTranscriptStore((s) => s.clear);
 
-  const wsRef = useRef<TranscriptWsClient | null>(null);
+  const setConnPhase = useConnectionStore((s) => s.setPhase);
+  const setBufferedCount = useConnectionStore((s) => s.setBufferedCount);
+  const setDroppedCount = useConnectionStore((s) => s.setDroppedCount);
+  const resetConnection = useConnectionStore((s) => s.reset);
+
+  const wsRef = useRef<ReconnectingWsClient | null>(null);
+  const wsUnsubRef = useRef<(() => void) | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
   // The Tauri event-listener unsubscribers — installed after WS open,
   // torn down on stop. Held in refs so the callbacks don't need to
   // re-subscribe across renders.
   const audioUnlistenRef = useRef<(() => void) | null>(null);
   const errorUnlistenRef = useRef<(() => void) | null>(null);
-  const [wsState, setWsState] = useState<WsReadyState>("closed");
+  // Guard against double-firing the auto-stop when phase flips to failed.
+  const autoStopFiredRef = useRef(false);
 
   // Drive the elapsed timer at 250ms — under the perceptual threshold for
   // a mm:ss display, well above 60fps so the layout never thrashes.
@@ -98,10 +109,15 @@ export function useRecording() {
       errorUnlistenRef.current();
       errorUnlistenRef.current = null;
     }
+    if (wsUnsubRef.current) {
+      wsUnsubRef.current();
+      wsUnsubRef.current = null;
+    }
     wsRef.current?.close();
     wsRef.current = null;
-    setWsState("closed");
-  }, []);
+    sessionIdRef.current = null;
+    resetConnection();
+  }, [resetConnection]);
 
   /**
    * Drive the OS prompts (mic + screen recording) and write the
@@ -128,6 +144,23 @@ export function useRecording() {
       return "denied";
     }
   }, [beginPermissionRequest, cancelStart, setPermissionState]);
+
+  const stop = useCallback(async () => {
+    requestStop();
+    teardownWs();
+    try {
+      const result = await stopRecording();
+      confirmStop({ endedAt: result.endedAt, durationMs: result.durationMs });
+    } catch (err) {
+      // Stop should always land — if the Rust side reports NotRecording, fall
+      // back to a synthetic stop so the UI returns to a usable state.
+      confirmStop({
+        endedAt: new Date().toISOString(),
+        durationMs: 0,
+      });
+      console.error("stop_recording failed", err);
+    }
+  }, [confirmStop, requestStop, teardownWs]);
 
   const start = useCallback(async () => {
     // 1. Permission gate. Re-check live so a fresh System-Settings
@@ -176,45 +209,12 @@ export function useRecording() {
       nowMs: Date.now(),
     });
 
-    // 3. Open the transcript WebSocket and wire the audio bridge.
-    setWsState("connecting");
-    wsRef.current = connectTranscriptWs(result.sessionId, {
-      onOpen: async () => {
-        setWsState("open");
-        // Now that the WS is open and the backend has seen the
-        // client_hello, subscribe to audio chunks and forward them.
-        // Doing this in onOpen (rather than synchronously above)
-        // avoids the case where audio events arrive before the WS
-        // has accepted the hello frame.
-        try {
-          audioUnlistenRef.current = await subscribeAudioChunks(
-            result.sessionId,
-            (payload: AudioChunkPayload) => {
-              wsRef.current?.send({
-                type: "audio_chunk",
-                sessionId: payload.sessionId,
-                seq: payload.seq,
-                pcmBase64: payload.pcmBase64,
-              });
-            },
-          );
-          errorUnlistenRef.current = await subscribeAudioErrors(
-            result.sessionId,
-            (payload) => {
-              if (!payload.recoverable) {
-                // Auto-stop on fatal capture-side error so the UI
-                // doesn't sit in a zombie "recording" state forever.
-                void stop();
-              }
-              cancelStart(`${payload.code}: ${payload.message}`);
-            },
-          );
-        } catch (err) {
-          console.error("failed to subscribe to audio events", err);
-        }
-      },
-      onClose: () => setWsState("closed"),
-      onError: () => setWsState("closed"),
+    // 3. Open the reconnecting WebSocket and wire the audio bridge.
+    autoStopFiredRef.current = false;
+    sessionIdRef.current = result.sessionId;
+    resetConnection();
+
+    const client = createReconnectingWsClient(result.sessionId, {
       onMessage: (msg) => {
         switch (msg.type) {
           case "transcript_line":
@@ -227,34 +227,78 @@ export function useRecording() {
             break;
         }
       },
+      onReconnected: () => {
+        const sid = sessionIdRef.current;
+        if (sid) {
+          appendSystemNote({
+            sessionId: sid,
+            text: "Reconnected. A short gap may appear in the transcript while we caught up.",
+          });
+        }
+      },
+      onReconnectFailed: () => {
+        const sid = sessionIdRef.current;
+        if (sid) {
+          appendSystemNote({
+            sessionId: sid,
+            text: "Connection lost. Session stopped automatically after 5 minutes of failed reconnects.",
+          });
+        }
+        if (!autoStopFiredRef.current) {
+          autoStopFiredRef.current = true;
+          void stop();
+        }
+      },
     });
+    wsRef.current = client;
+    wsUnsubRef.current = client.subscribe((snap) => {
+      setConnPhase(snap.phase);
+      setBufferedCount(snap.bufferedChunkCount);
+      setDroppedCount(snap.droppedChunkCount);
+    });
+
+    // Subscribe to native audio events. The reconnecting client buffers
+    // chunks while disconnected, so we don't have to gate on phase here.
+    try {
+      audioUnlistenRef.current = await subscribeAudioChunks(
+        result.sessionId,
+        (payload: AudioChunkPayload) => {
+          wsRef.current?.send({
+            type: "audio_chunk",
+            sessionId: payload.sessionId,
+            seq: payload.seq,
+            pcmBase64: payload.pcmBase64,
+          });
+        },
+      );
+      errorUnlistenRef.current = await subscribeAudioErrors(
+        result.sessionId,
+        (payload) => {
+          if (!payload.recoverable) {
+            void stop();
+          }
+          cancelStart(`${payload.code}: ${payload.message}`);
+        },
+      );
+    } catch (err) {
+      console.error("failed to subscribe to audio events", err);
+    }
   }, [
     appendLine,
+    appendSystemNote,
     beginPermissionCheck,
     beginPermissionRequest,
     cancelStart,
     clearLines,
     confirmStart,
     requestStart,
+    resetConnection,
+    setBufferedCount,
+    setConnPhase,
+    setDroppedCount,
     setPermissionState,
+    stop,
   ]);
-
-  const stop = useCallback(async () => {
-    requestStop();
-    teardownWs();
-    try {
-      const result = await stopRecording();
-      confirmStop({ endedAt: result.endedAt, durationMs: result.durationMs });
-    } catch (err) {
-      // Stop should always land — if the Rust side reports NotRecording, fall
-      // back to a synthetic stop so the UI returns to a usable state.
-      confirmStop({
-        endedAt: new Date().toISOString(),
-        durationMs: 0,
-      });
-      console.error("stop_recording failed", err);
-    }
-  }, [confirmStop, requestStop, teardownWs]);
 
   // Clean up the socket if the component using this hook unmounts mid-session.
   useEffect(() => {
@@ -268,7 +312,6 @@ export function useRecording() {
     sessionId,
     elapsedMs,
     error,
-    wsState,
     permissionState,
     start,
     stop,

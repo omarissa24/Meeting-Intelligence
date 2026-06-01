@@ -1,28 +1,48 @@
+import { useEffect, useState } from "react";
+
 import { cn } from "@/lib/utils";
-import type { WsReadyState } from "@/lib/ws-client";
+import { useConnectionStore } from "@/stores/connection-store";
 
-const LABEL: Record<WsReadyState, string> = {
-  connecting: "Connecting",
-  open: "Connected",
-  closing: "Closing",
-  closed: "Offline",
-};
+export function ConnectionStatus() {
+  const phase = useConnectionStore((s) => s.phase);
 
-export function ConnectionStatus({ state }: { state: WsReadyState }) {
+  // Live countdown while reconnecting — only ticks when needed.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (phase.kind !== "reconnecting") return;
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [phase.kind]);
+
+  const { dot, label } = (() => {
+    switch (phase.kind) {
+      case "open":
+        return { dot: "bg-accent", label: "Connected" } as const;
+      case "connecting":
+        return {
+          dot: "bg-muted-foreground/60 animate-pulse",
+          label:
+            phase.attempt === 0 ? "Connecting" : `Connecting (attempt ${phase.attempt + 1})`,
+        } as const;
+      case "reconnecting": {
+        const remaining = Math.max(0, Math.ceil((phase.nextRetryAtMs - now) / 1000));
+        return {
+          dot: "bg-accent animate-pulse",
+          label: `Reconnecting · attempt ${phase.attempt + 1} · ${remaining}s`,
+        } as const;
+      }
+      case "failed":
+        return { dot: "bg-destructive", label: "Disconnected" } as const;
+      case "idle":
+      default:
+        return { dot: "bg-muted-foreground/30", label: "Offline" } as const;
+    }
+  })();
+
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span
-        aria-hidden
-        className={cn(
-          "size-1.5 rounded-full transition-colors",
-          state === "open"
-            ? "bg-accent"
-            : state === "connecting"
-              ? "bg-muted-foreground/60"
-              : "bg-muted-foreground/30",
-        )}
-      />
-      <span className="tabular-nums">{LABEL[state]}</span>
+      <span aria-hidden className={cn("size-1.5 rounded-full transition-colors", dot)} />
+      <span className="tabular-nums">{label}</span>
     </div>
   );
 }

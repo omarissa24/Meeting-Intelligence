@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { useTranscriptStore } from "@/stores/transcript-store";
+import { SYSTEM_SPEAKER_ID, useTranscriptStore } from "@/stores/transcript-store";
 
 const SPEAKER_LABELS: Record<string, string> = {
   "spk-1": "Speaker 1",
@@ -64,6 +64,18 @@ export function TranscriptPanel() {
 }
 
 function TranscriptItem({ line }: { line: TranscriptLine }) {
+  if (line.speakerId === SYSTEM_SPEAKER_ID) {
+    return (
+      <li
+        role="note"
+        className="animate-line-in flex justify-center"
+      >
+        <p className="text-xs italic text-muted-foreground/80 max-w-prose text-center">
+          — {line.text} —
+        </p>
+      </li>
+    );
+  }
   return (
     <li className="animate-line-in flex gap-3">
       <Badge variant="secondary" className="h-fit shrink-0 font-normal tabular-nums tracking-tight">

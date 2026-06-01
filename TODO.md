@@ -42,11 +42,11 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] VAD sensitivity tunable via settings value (not user-exposed in MVP)
   - [ ] Silence filtering reduces transmitted audio ≥30% in typical meetings
 - [ ] **US-06 — Connection loss recovery**
-  - [ ] WebSocket drop triggers exponential backoff retry (1 s, 2 s, 4 s, max 30 s)
-  - [ ] UI shows `Reconnecting…` indicator during retry
-  - [ ] Up to 30 s of audio buffered locally during disconnection
-  - [ ] Buffered audio replayed to STT API on reconnect
-  - [ ] Session auto-stopped and user notified if reconnection fails after 5 minutes
+  - [x] WebSocket drop triggers exponential backoff retry (1 s, 2 s, 4 s, max 30 s)
+  - [x] UI shows `Reconnecting…` indicator during retry
+  - [x] Up to 30 s of audio buffered locally during disconnection
+  - [x] Buffered audio replayed to STT API on reconnect
+  - [x] Session auto-stopped and user notified if reconnection fails after 5 minutes
 - [ ] **US-07 — App stays responsive during a meeting**
   - [x] Audio capture runs on dedicated native thread, isolated from UI thread
   - [ ] React UI maintains 60 fps during active transcription
@@ -64,8 +64,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
 - [ ] **FR-1.08 (Must)** UI renders transcript lines with max display latency of 1.5 s
 - [ ] **FR-1.09 (Should)** Interim results visually distinguished from final results
-- [ ] **FR-1.10 (Must)** WebSocket implements exponential backoff reconnection, max retry 5 minutes
-- [ ] **FR-1.11 (Should)** Up to 30 s of audio buffered locally during disconnection and replayed
+- [x] **FR-1.10 (Must)** WebSocket implements exponential backoff reconnection, max retry 5 minutes
+- [x] **FR-1.11 (Should)** Up to 30 s of audio buffered locally during disconnection and replayed
 - [ ] **FR-1.12 (Must)** macOS uses ScreenCaptureKit; Windows uses WASAPI loopback
 - [ ] **FR-1.13 (Must)** Binary signed for macOS (Developer ID) and Windows (Authenticode)
 - [x] **FR-1.14 (Must)** Audio capture runs on dedicated thread, does not block UI render loop
