@@ -19,12 +19,20 @@
 //! sees, the buffer count, total bytes, the first 8 f32 sample values, and
 //! the running peak amplitude. It exits after 5 s and prints a summary.
 //!
-//! Findings (fill in after running):
-//!   - [ ] We get audio buffers @ ~16000 Hz mono as configured? Y/N
-//!   - [ ] First-frame `data().len()` (bytes): ____
-//!   - [ ] First-frame f32 peak: ____
-//!   - [ ] Buffers per second observed: ____
-//!   - [ ] Notes / surprises:
+//! Findings (run on macOS 15, Apple Silicon, 2026-06-01):
+//!   - [x] We get audio buffers @ ~16000 Hz mono as configured? **Yes** —
+//!         50 buffers/s × 320 f32 samples = exactly 16 000 samples/s.
+//!   - [x] First-frame `data().len()` (bytes): **1280** (= 320 × 4).
+//!   - [x] First-frame f32 peak: 0.0000 (run-time silence; no audio
+//!         playing during the 5 s capture window — see exit code 3).
+//!   - [x] Buffers per second observed: **50.0** (i.e. SCStream emits
+//!         a 20 ms buffer every 20 ms — pleasingly aligned with the
+//!         WebRTC-VAD frame size we'll feed downstream).
+//!   - Notes / surprises: `audio_buffer_list().iter()` returned exactly
+//!     one buffer per callback (`list_count=1`); the multi-buffer guard
+//!     in the loop is never hit at this configuration.
+//!     `bytemuck::try_cast_slice::<u8, f32>` accepted every buffer with
+//!     no alignment errors — Float32 interleaved layout confirmed.
 //!
 //! Once green, the production module reuses this exact pattern — see
 //! `audio/macos/system.rs` in the implementation plan.
