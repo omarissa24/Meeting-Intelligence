@@ -19,7 +19,9 @@
 //!   controller does this when sources have stopped) or call `.stop()` —
 //!   the worker drains pending audio, flushes the encoder, then exits.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender};
+use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -73,6 +75,12 @@ pub struct PipelineHandle {
     /// the controller. Worker also stops on input-channel disconnect,
     /// so this is just for the explicit-stop path.
     stop_tx: Sender<()>,
+    /// Live counter of output-channel-full drops. Shared with the
+    /// worker; the emitter thread polls this so a sustained drop
+    /// can be surfaced to the UI as `audio://error AUDIO_DROP` while
+    /// the session is still running, instead of only being visible
+    /// post-mortem in the stop reply.
+    output_dropped_counter: Arc<AtomicU64>,
 }
 
 impl PipelineHandle {
@@ -92,6 +100,13 @@ impl PipelineHandle {
     /// `start_recording` flow.
     pub fn take_chunks(&mut self) -> Receiver<EncodedChunk> {
         std::mem::replace(&mut self.chunk_rx, sync_channel(0).1)
+    }
+
+    /// Live (monotonically-non-decreasing) count of output-channel-full
+    /// drops. Cloned and handed to the emitter thread so it can detect
+    /// drops and surface an `audio://error` event mid-session.
+    pub fn output_dropped_counter(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.output_dropped_counter)
     }
 
     /// Signal stop and wait for the worker. Returns the final stats.
@@ -116,9 +131,12 @@ pub fn spawn() -> PipelineHandle {
     let (chunk_tx, chunk_rx) = sync_channel::<EncodedChunk>(OUTPUT_QUEUE_CAP);
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
 
+    let output_dropped_counter = Arc::new(AtomicU64::new(0));
+    let worker_dropped = Arc::clone(&output_dropped_counter);
+
     let join = std::thread::Builder::new()
         .name("audio-pipeline".into())
-        .spawn(move || run_worker(audio_rx, chunk_tx, stop_rx))
+        .spawn(move || run_worker(audio_rx, chunk_tx, stop_rx, worker_dropped))
         .expect("failed to spawn audio-pipeline thread");
 
     PipelineHandle {
@@ -126,6 +144,7 @@ pub fn spawn() -> PipelineHandle {
         chunk_rx,
         join: Some(join),
         stop_tx,
+        output_dropped_counter,
     }
 }
 
@@ -133,6 +152,7 @@ fn run_worker(
     audio_rx: Receiver<AudioFrame>,
     chunk_tx: SyncSender<EncodedChunk>,
     stop_rx: Receiver<()>,
+    output_dropped_counter: Arc<AtomicU64>,
 ) -> PipelineStats {
     let mut mixer = Mixer::new();
     let mut vad = VadGate::quality();
@@ -176,6 +196,7 @@ fn run_worker(
             &mut stats,
             &mut mix_scratch,
             &mut i16_scratch,
+            &output_dropped_counter,
         );
     }
 
@@ -195,10 +216,12 @@ fn run_worker(
         &mut stats,
         &mut mix_scratch,
         &mut i16_scratch,
+        &output_dropped_counter,
     );
     if let Some(chunk) = encoder.flush() {
         if chunk_tx.send(chunk).is_err() {
             stats.output_dropped += 1;
+            output_dropped_counter.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -264,6 +287,7 @@ fn drain_mixer(
     stats: &mut PipelineStats,
     f32_scratch: &mut [f32],
     i16_scratch: &mut [i16],
+    output_dropped_counter: &Arc<AtomicU64>,
 ) {
     while mixer.try_emit_chunk(f32_scratch) {
         for (i, &s) in f32_scratch.iter().enumerate() {
@@ -274,6 +298,7 @@ fn drain_mixer(
                 if let Some(chunk) = encoder.push_frame(f32_scratch) {
                     if chunk_tx.send(chunk).is_err() {
                         stats.output_dropped += 1;
+                        output_dropped_counter.fetch_add(1, Ordering::Relaxed);
                     }
                 }
             }

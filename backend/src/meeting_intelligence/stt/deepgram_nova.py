@@ -13,13 +13,20 @@ but no diarize/interim flags — so we deliberately target v1 here.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections import Counter
 from collections.abc import AsyncIterator
 
 from deepgram import AsyncDeepgramClient
 from deepgram.listen.v1.types.listen_v1results import ListenV1Results
 
-from meeting_intelligence.interfaces.stt import STTProvider, TranscriptEvent
+from meeting_intelligence.interfaces.stt import (
+    STTProvider,
+    STTProviderError,
+    TranscriptEvent,
+)
+
+log = logging.getLogger("meeting_intelligence.stt.deepgram_nova")
 
 
 class DeepgramNovaSTT(STTProvider):
@@ -43,43 +50,81 @@ class DeepgramNovaSTT(STTProvider):
         session_id: str,
         audio_stream: AsyncIterator[bytes],
     ) -> AsyncIterator[TranscriptEvent]:
-        async with self._client.listen.v1.connect(
-            model="nova-2",
-            encoding="linear16",
-            sample_rate=16000,
-            channels=1,
-            diarize=True,
-            interim_results=True,
-            punctuate=True,
-            smart_format=True,
-        ) as conn:
-            producer = asyncio.create_task(_pump_audio(conn, audio_stream))
-            try:
-                async for msg in conn:
-                    if not isinstance(msg, ListenV1Results):
-                        continue
-                    event = _results_to_event(msg, session_id)
-                    if event is not None:
-                        yield event
-            finally:
-                # Audio stream ended (or downstream cancelled). Producer may
-                # already have called send_close_stream; either way, cancel
-                # any in-flight send so the connection unwinds cleanly.
-                producer.cancel()
+        producer_error: list[BaseException] = []
+        try:
+            async with self._client.listen.v1.connect(
+                model="nova-2",
+                encoding="linear16",
+                sample_rate=16000,
+                channels=1,
+                diarize=True,
+                interim_results=True,
+                punctuate=True,
+                smart_format=True,
+            ) as conn:
+                log.info("deepgram.connect session_id=%s", session_id)
+                producer = asyncio.create_task(
+                    _pump_audio(conn, audio_stream, session_id, producer_error)
+                )
                 try:
-                    await producer
-                except (asyncio.CancelledError, Exception):
-                    pass
+                    async for msg in conn:
+                        if not isinstance(msg, ListenV1Results):
+                            continue
+                        event = _results_to_event(msg, session_id)
+                        if event is not None:
+                            yield event
+                except STTProviderError:
+                    raise
+                except Exception as exc:
+                    log.error(
+                        "deepgram.recv_failed session_id=%s err=%s", session_id, exc
+                    )
+                    raise STTProviderError(f"deepgram receive failed: {exc}") from exc
+                finally:
+                    # Audio stream ended (or downstream cancelled). Producer may
+                    # already have called send_close_stream; either way, cancel
+                    # any in-flight send so the connection unwinds cleanly.
+                    producer.cancel()
+                    try:
+                        await producer
+                    except (asyncio.CancelledError, Exception):
+                        pass
+                    log.info("deepgram.disconnect session_id=%s", session_id)
+        except STTProviderError:
+            raise
+        except Exception as exc:
+            # Connection establishment failure (auth, network, etc.).
+            log.error("deepgram.connect_failed session_id=%s err=%s", session_id, exc)
+            raise STTProviderError(f"deepgram connect failed: {exc}") from exc
+
+        # If the producer task captured an exception, surface it now —
+        # the consumer loop exited cleanly because Deepgram closed the
+        # connection, but the real cause was on the send side.
+        if producer_error:
+            raise STTProviderError(
+                f"deepgram send failed: {producer_error[0]}"
+            ) from producer_error[0]
 
 
 async def _pump_audio(
     conn: object,
     audio_stream: AsyncIterator[bytes],
+    session_id: str,
+    error_sink: list[BaseException],
 ) -> None:
-    """Forward every PCM chunk from `audio_stream` to Deepgram."""
+    """Forward every PCM chunk from `audio_stream` to Deepgram.
+
+    Captures any non-cancellation exception into `error_sink` so the
+    consumer side can re-raise it as `STTProviderError`.
+    """
     try:
         async for chunk in audio_stream:
             await conn.send_media(chunk)  # type: ignore[attr-defined]
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log.error("deepgram.send_failed session_id=%s err=%s", session_id, exc)
+        error_sink.append(exc)
     finally:
         # CloseStream tells Deepgram the audio is finished; the connection
         # then emits trailing finals before EOF.

@@ -29,8 +29,11 @@
 // aren't called yet from lib.rs.
 #![allow(dead_code)]
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
+use std::sync::Arc;
 use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
@@ -39,6 +42,12 @@ use crate::audio::encoder::EncodedChunk;
 use crate::audio::macos::{mic::CpalMicSource, system::SCKitSystemSource};
 use crate::audio::pipeline::{self, PipelineHandle, PipelineStats};
 use crate::audio::traits::{MicSource, SourceCounters, SourceError, SystemSource};
+
+/// Minimum gap between emitted `audio://error AUDIO_DROP` events. A
+/// sustained drop condition still surfaces immediately on the first
+/// occurrence; subsequent drops within this window are suppressed so
+/// the toast/banner doesn't spam.
+const DROP_NOTICE_INTERVAL: Duration = Duration::from_secs(10);
 
 /// Tauri event name for each emitted PCM chunk. Must match the
 /// frontend's `listen('audio://chunk')` call.
@@ -142,8 +151,13 @@ impl Session {
         // into the emitter thread without losing access to the rest
         // of the handle (audio_sink, stop_tx).
         let chunk_rx = pipeline.take_chunks();
-        let emitter =
-            spawn_emitter_thread(app.clone(), session_id.clone(), chunk_rx);
+        let output_dropped = pipeline.output_dropped_counter();
+        let emitter = spawn_emitter_thread(
+            app.clone(),
+            session_id.clone(),
+            chunk_rx,
+            output_dropped,
+        );
 
         Ok(Self {
             session_id,
@@ -227,11 +241,18 @@ fn spawn_emitter_thread<R: Runtime>(
     app: AppHandle<R>,
     session_id: String,
     rx: Receiver<EncodedChunk>,
+    pipeline_dropped: Arc<AtomicU64>,
 ) -> JoinHandle<u64> {
     std::thread::Builder::new()
         .name("audio-emitter".into())
         .spawn(move || {
-            let mut dropped: u64 = 0;
+            let mut emitter_dropped: u64 = 0;
+            // Last value of pipeline_dropped we already notified the UI
+            // about; lets us notify the very first time the pipeline
+            // drops a chunk and re-notify after the rate-limit window.
+            let mut last_notified_pipeline_dropped: u64 = 0;
+            let mut last_notice_at: Option<Instant> = None;
+
             for chunk in rx.iter() {
                 let payload = AudioChunkPayload {
                     session_id: session_id.clone(),
@@ -240,17 +261,61 @@ fn spawn_emitter_thread<R: Runtime>(
                     duration_ms: chunk.duration_ms,
                 };
                 if let Err(e) = app.emit(EVENT_AUDIO_CHUNK, payload) {
-                    dropped += 1;
-                    if dropped == 1 {
+                    emitter_dropped += 1;
+                    if emitter_dropped == 1 {
                         eprintln!(
                             "audio-emitter: first failed emit: {e}; session_id={session_id}"
                         );
                     }
+                    maybe_emit_drop_notice(
+                        &app,
+                        &session_id,
+                        "transcript event delivery failed",
+                        &mut last_notice_at,
+                    );
+                }
+
+                // Pipeline-side drop check: read the shared counter once
+                // per chunk, surface a single notice per
+                // DROP_NOTICE_INTERVAL window.
+                let cur = pipeline_dropped.load(Ordering::Relaxed);
+                if cur > last_notified_pipeline_dropped {
+                    last_notified_pipeline_dropped = cur;
+                    maybe_emit_drop_notice(
+                        &app,
+                        &session_id,
+                        "audio output buffer full; some audio was dropped",
+                        &mut last_notice_at,
+                    );
                 }
             }
-            dropped
+            emitter_dropped
         })
         .expect("failed to spawn audio-emitter thread")
+}
+
+fn maybe_emit_drop_notice<R: Runtime>(
+    app: &AppHandle<R>,
+    session_id: &str,
+    message: &str,
+    last_notice_at: &mut Option<Instant>,
+) {
+    let now = Instant::now();
+    let due = match *last_notice_at {
+        None => true,
+        Some(t) => now.duration_since(t) >= DROP_NOTICE_INTERVAL,
+    };
+    if !due {
+        return;
+    }
+    *last_notice_at = Some(now);
+    let payload = AudioErrorPayload {
+        session_id: session_id.to_string(),
+        code: "AUDIO_DROP",
+        message: message.to_string(),
+        recoverable: true,
+    };
+    let _ = app.emit(EVENT_AUDIO_ERROR, payload);
 }
 
 fn merge_stats(

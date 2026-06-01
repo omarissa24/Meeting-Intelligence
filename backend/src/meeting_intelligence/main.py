@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -8,6 +10,13 @@ from meeting_intelligence.config import get_settings
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    # Configure logging once at app construction. uvicorn installs its own
+    # handlers on its loggers (uvicorn, uvicorn.access, uvicorn.error), so
+    # this only governs application loggers under `meeting_intelligence.*`.
+    logging.basicConfig(
+        level=settings.log_level.upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     app = FastAPI(
         title="Meeting Intelligence",
         version="0.0.0",

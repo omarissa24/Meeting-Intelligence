@@ -21,6 +21,7 @@ import base64
 import contextlib
 import itertools
 import json
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, cast
@@ -29,10 +30,16 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from meeting_intelligence.api.deps import get_stt_provider
-from meeting_intelligence.interfaces.stt import STTProvider, TranscriptEvent
+from meeting_intelligence.interfaces.stt import (
+    STTProvider,
+    STTProviderError,
+    TranscriptEvent,
+)
 from meeting_intelligence.stt.in_memory_echo import InMemoryEchoSTT
 
 router = APIRouter(prefix="/transcript", tags=["transcript"])
+
+log = logging.getLogger("meeting_intelligence.transcript")
 
 # Max PCM chunks held in the audio queue before backpressure kicks in.
 # ~64 chunks @ ~1 s each = 64 s of slack while the STT catches up.
@@ -109,6 +116,15 @@ def _event_to_line_dict(event: TranscriptEvent) -> dict[str, Any]:
 
 def _provider_id(stt: STTProvider) -> str:
     return cast(str, getattr(stt, "provider_id", stt.__class__.__name__))
+
+
+def _percentile(values: list[int], q: float) -> int:
+    """Nearest-rank percentile. Returns 0 on an empty list."""
+    if not values:
+        return 0
+    s = sorted(values)
+    rank = max(0, min(len(s) - 1, int(round(q * (len(s) - 1)))))
+    return s[rank]
 
 
 # --- Synthetic ticker (echo-provider only) ---
@@ -228,6 +244,9 @@ async def transcript_ws(
         await ws.close(code=1008)
         return
 
+    provider_id = _provider_id(stt)
+    log.info("transcript.ws_open session_id=%s provider=%s", session_id, provider_id)
+
     started_at = _utc_iso()
     started_at_monotonic = asyncio.get_event_loop().time()
     await ws.send_text(
@@ -236,14 +255,19 @@ async def transcript_ws(
                 "type": "session_started",
                 "sessionId": session_id,
                 "startedAt": started_at,
-                "sttProvider": _provider_id(stt),
+                "sttProvider": provider_id,
             }
         )
     )
+    log.info("transcript.session_started session_id=%s", session_id)
 
     # Per-connection mutable state captured by the closures below.
     final_line_count = 0
     probe_idx = 10_000  # well clear of ticker indices
+    last_chunk_recv_at: float | None = None
+    final_latencies_ms: list[int] = []
+    stt_failed = False
+    stt_failure_msg = ""
 
     async def send_transcript_event(event: TranscriptEvent) -> None:
         # ↓ Phase 3 LangGraph insertion point: every event flows through here,
@@ -252,6 +276,21 @@ async def transcript_ws(
         nonlocal final_line_count
         if event.is_final:
             final_line_count += 1
+        # Wire-to-wire latency: chunk-recv → event-emit. Recorded for finals
+        # only so a flood of interims doesn't skew the summary.
+        if last_chunk_recv_at is not None:
+            latency_ms = int(
+                (asyncio.get_event_loop().time() - last_chunk_recv_at) * 1000
+            )
+            if event.is_final:
+                final_latencies_ms.append(latency_ms)
+            log.debug(
+                "transcript.event_emit session_id=%s is_final=%s speaker=%s latency_ms=%d",
+                session_id,
+                event.is_final,
+                event.speaker_id,
+                latency_ms,
+            )
         payload = {"type": "transcript_line", "line": _event_to_line_dict(event)}
         await ws.send_text(json.dumps(payload))
 
@@ -266,20 +305,40 @@ async def transcript_ws(
             yield chunk
 
     async def transcribe_consumer() -> None:
-        async for event in stt.transcribe(session_id, audio_iter()):
-            await send_transcript_event(event)
+        nonlocal stt_failed, stt_failure_msg
+        try:
+            async for event in stt.transcribe(session_id, audio_iter()):
+                await send_transcript_event(event)
+        except STTProviderError as exc:
+            stt_failed = True
+            stt_failure_msg = str(exc)
+            log.error(
+                "transcript.stt_failure session_id=%s code=STT_PROVIDER_FAILURE msg=%s",
+                session_id,
+                exc,
+            )
+            await _send_error(
+                ws,
+                "STT_PROVIDER_FAILURE",
+                stt_failure_msg or "stt provider failed",
+                recoverable=False,
+            )
 
     consumer_task = asyncio.create_task(transcribe_consumer())
 
     # 3. Synthetic ticker, only for the echo provider (preserves slice-1 demo).
     ticker_task: asyncio.Task[None] | None = None
-    if _provider_id(stt) == "in-memory-echo":
+    if provider_id == "in-memory-echo":
         ticker_task = asyncio.create_task(
             _synthetic_ticker(session_id, stt, send_transcript_event)
         )
 
     try:
         while True:
+            if stt_failed:
+                # Consumer surfaced a non-recoverable provider failure.
+                # Stop accepting frames and let `finally` close the WS.
+                break
             raw = await ws.receive_text()
             try:
                 msg = _client_msg_adapter.validate_python(json.loads(raw))
@@ -298,9 +357,21 @@ async def transcript_ws(
                         recoverable=True,
                     )
                     continue
+                last_chunk_recv_at = asyncio.get_event_loop().time()
+                log.debug(
+                    "transcript.chunk_recv session_id=%s seq=%d bytes=%d",
+                    session_id,
+                    msg.seq,
+                    len(pcm),
+                )
                 try:
                     audio_queue.put_nowait(pcm)
                 except asyncio.QueueFull:
+                    log.warning(
+                        "transcript.audio_backpressure session_id=%s seq=%d",
+                        session_id,
+                        msg.seq,
+                    )
                     await _send_error(
                         ws,
                         "AUDIO_BACKPRESSURE",
@@ -345,6 +416,27 @@ async def transcript_ws(
     ended_at_monotonic = asyncio.get_event_loop().time()
     duration_ms = max(0, int((ended_at_monotonic - started_at_monotonic) * 1000))
 
+    if final_latencies_ms:
+        log.info(
+            "transcript.latency_summary session_id=%s p50_ms=%d p95_ms=%d n=%d",
+            session_id,
+            _percentile(final_latencies_ms, 0.50),
+            _percentile(final_latencies_ms, 0.95),
+            len(final_latencies_ms),
+        )
+
+    if stt_failed:
+        # Hard failure path: skip session_ended and close with Internal Error.
+        log.info(
+            "transcript.ws_close session_id=%s final_lines=%d duration_ms=%d reason=stt_failure",
+            session_id,
+            final_line_count,
+            duration_ms,
+        )
+        with contextlib.suppress(Exception):
+            await ws.close(code=1011)
+        return
+
     with contextlib.suppress(Exception):
         await ws.send_text(
             json.dumps(
@@ -360,6 +452,12 @@ async def transcript_ws(
             )
         )
         await ws.close()
+    log.info(
+        "transcript.ws_close session_id=%s final_lines=%d duration_ms=%d",
+        session_id,
+        final_line_count,
+        duration_ms,
+    )
 
 
 async def _send_error(ws: WebSocket, code: str, message: str, recoverable: bool) -> None:

@@ -12,29 +12,32 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { speakerLabel } from "@/lib/speaker-label";
 import { cn } from "@/lib/utils";
 import { SYSTEM_SPEAKER_ID, useTranscriptStore } from "@/stores/transcript-store";
 
-const SPEAKER_LABELS: Record<string, string> = {
-  "spk-1": "Speaker 1",
-  "spk-2": "Speaker 2",
-  probe: "Probe",
-};
-
-function speakerLabel(id: string): string {
-  return SPEAKER_LABELS[id] ?? id;
-}
+// If the user is reading older context, don't snap them back to the
+// latest line. 100 px is generous enough that an inertia flick still
+// counts as "near the bottom" but tight enough that a deliberate
+// scroll-up is preserved.
+const AUTOSCROLL_NEAR_BOTTOM_PX = 100;
 
 export function TranscriptPanel() {
   const lines = useTranscriptStore((s) => s.lines);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Auto-scroll to the latest line whenever the count changes.
+  // Auto-scroll to the latest line — but ONLY when we're already near
+  // the bottom. Otherwise the user has scrolled up and we leave them
+  // there. (US-02 AC: "transcript panel auto-scrolls to the latest
+  // line" interpreted with the obvious sane caveat.)
   useEffect(() => {
     const node = scrollRef.current;
     if (!node) return;
     const viewport = node.querySelector('[data-slot="scroll-area-viewport"]');
-    if (viewport instanceof HTMLElement) {
+    if (!(viewport instanceof HTMLElement)) return;
+    const distanceFromBottom =
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    if (distanceFromBottom < AUTOSCROLL_NEAR_BOTTOM_PX) {
       viewport.scrollTop = viewport.scrollHeight;
     }
   }, [lines.length]);

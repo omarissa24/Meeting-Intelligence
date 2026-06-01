@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     # Service
     environment: str = "development"
     cors_allow_origins: list[str] = ["http://localhost:1420"]
+    # Root logger level. Set to DEBUG to enable per-chunk and per-event
+    # transcript logging during E2E debugging; INFO is the right default
+    # for normal use.
+    log_level: str = "INFO"
 
     # Data
     database_url: str | None = None

@@ -20,9 +20,9 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [x] Button toggles to Stop while recording is in progress
 - [ ] **US-02 — See live transcript appear on screen**
   - [ ] Transcript lines appear with ≤1.5 s latency from speech
-  - [ ] Each line shows the diarisation speaker label (e.g. `Speaker 1`)
-  - [ ] Transcript panel auto-scrolls to the latest line
-  - [ ] Partial/interim results displayed in lighter colour, replaced by finals
+  - [x] Each line shows the diarisation speaker label (e.g. `Speaker 1`)
+  - [x] Transcript panel auto-scrolls to the latest line
+  - [x] Partial/interim results displayed in lighter colour, replaced by finals
   - [ ] Overlapping speakers handled without crashes
   - [ ] System audio (meeting output) and mic captured simultaneously
 - [ ] **US-03 — Stop a recording and see confirmation**
@@ -63,7 +63,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
 - [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
 - [ ] **FR-1.08 (Must)** UI renders transcript lines with max display latency of 1.5 s
-- [ ] **FR-1.09 (Should)** Interim results visually distinguished from final results
+- [x] **FR-1.09 (Should)** Interim results visually distinguished from final results
 - [x] **FR-1.10 (Must)** WebSocket implements exponential backoff reconnection, max retry 5 minutes
 - [x] **FR-1.11 (Should)** Up to 30 s of audio buffered locally during disconnection and replayed
 - [ ] **FR-1.12 (Must)** macOS uses ScreenCaptureKit; Windows uses WASAPI loopback

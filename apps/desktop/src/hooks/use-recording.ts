@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { toast } from "sonner";
 
 import {
   subscribeAudioChunks,
@@ -73,6 +74,11 @@ export function useRecording() {
   const errorUnlistenRef = useRef<(() => void) | null>(null);
   // Guard against double-firing the auto-stop when phase flips to failed.
   const autoStopFiredRef = useRef(false);
+  // Wall-clock timestamp of the most recently sent audio_chunk. Compared
+  // against the arrival time of each isFinal transcript_line to log a
+  // rough end-to-end latency in dev. Single value, not per-seq — Deepgram's
+  // session-relative timing fields make seq alignment noisy without payoff.
+  const lastChunkSentAtMsRef = useRef<number | null>(null);
 
   // Drive the elapsed timer at 250ms — under the perceptual threshold for
   // a mm:ss display, well above 60fps so the layout never thrashes.
@@ -217,12 +223,47 @@ export function useRecording() {
     const client = createReconnectingWsClient(result.sessionId, {
       onMessage: (msg) => {
         switch (msg.type) {
-          case "transcript_line":
+          case "transcript_line": {
             appendLine(msg.line);
+            // Dev-only end-to-end latency log: chunk-sent → final-received.
+            if (
+              msg.line.isFinal &&
+              lastChunkSentAtMsRef.current != null
+            ) {
+              const e2eMs = Date.now() - lastChunkSentAtMsRef.current;
+              console.debug(
+                "[latency] e2e_ms=%d text=%s",
+                e2eMs,
+                msg.line.text.slice(0, 40),
+              );
+            }
+            break;
+          }
+          case "error":
+            // Non-recoverable STT failures are terminal: append a system
+            // note in the transcript and auto-stop the session. The
+            // recording-store will already be in `recording`; stop()
+            // walks it through the normal stopping/stopped path.
+            if (
+              msg.code === "STT_PROVIDER_FAILURE" &&
+              !msg.recoverable
+            ) {
+              const sid = sessionIdRef.current;
+              if (sid) {
+                appendSystemNote({
+                  sessionId: sid,
+                  text:
+                    "Speech-to-text service unavailable. Session stopped.",
+                });
+              }
+              if (!autoStopFiredRef.current) {
+                autoStopFiredRef.current = true;
+                void stop();
+              }
+            }
             break;
           case "session_started":
           case "session_ended":
-          case "error":
             // Surface via UI later if needed.
             break;
         }
@@ -263,6 +304,7 @@ export function useRecording() {
       audioUnlistenRef.current = await subscribeAudioChunks(
         result.sessionId,
         (payload: AudioChunkPayload) => {
+          lastChunkSentAtMsRef.current = Date.now();
           wsRef.current?.send({
             type: "audio_chunk",
             sessionId: payload.sessionId,
@@ -275,9 +317,15 @@ export function useRecording() {
         result.sessionId,
         (payload) => {
           if (!payload.recoverable) {
+            // Fatal capture-side error: stop the session and surface
+            // the reason via the recording-store's error path.
             void stop();
+            cancelStart(`${payload.code}: ${payload.message}`);
+            return;
           }
-          cancelStart(`${payload.code}: ${payload.message}`);
+          // Recoverable: surface as a toast so the user knows audio
+          // was lost, but don't tear down the session.
+          toast.warning(`${payload.code}: ${payload.message}`);
         },
       );
     } catch (err) {

@@ -7,10 +7,18 @@ than asserting on frame order.
 
 import base64
 import json
+import logging
+from collections.abc import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
 
+from meeting_intelligence.api.deps import get_stt_provider
+from meeting_intelligence.interfaces.stt import (
+    STTProvider,
+    STTProviderError,
+    TranscriptEvent,
+)
 from meeting_intelligence.main import app
 
 
@@ -170,6 +178,125 @@ def test_second_connection_with_same_session_id_starts_fresh_session(
         # The startedAt timestamps prove the two are independent sessions.
         assert second_started["startedAt"] != first_started_at
         ws_b.send_text(json.dumps({"type": "client_bye", "sessionId": session_id}))
+
+
+class _FailingSTT(STTProvider):
+    """STT double whose `transcribe` raises STTProviderError immediately.
+
+    Mirrors what a real Deepgram auth failure would look like: the
+    provider yields nothing, the route catches the error, surfaces it
+    as a non-recoverable error frame, and closes the WS.
+    """
+
+    provider_id: str = "failing-test"
+
+    async def transcribe(  # type: ignore[override]
+        self,
+        session_id: str,
+        audio_stream: AsyncIterator[bytes],
+    ) -> AsyncIterator[TranscriptEvent]:
+        raise STTProviderError("simulated 401")
+        # Unreachable but keeps the function an async generator for
+        # signature-compat with concrete providers.
+        yield  # pragma: no cover
+
+
+def _override_with_failing_stt() -> None:
+    app.dependency_overrides[get_stt_provider] = lambda: _FailingSTT()
+
+
+def _clear_overrides() -> None:
+    app.dependency_overrides.pop(get_stt_provider, None)
+
+
+def test_stt_failure_emits_error_frame_and_closes(client: TestClient) -> None:
+    """An STTProviderError surfaces as recoverable=false STT_PROVIDER_FAILURE
+    and the WS closes without a session_ended frame."""
+    from starlette.websockets import WebSocketDisconnect
+
+    _override_with_failing_stt()
+    try:
+        with client.websocket_connect("/transcript/ws/sess-fail") as ws:
+            ws.send_text(json.dumps(_hello("sess-fail")))
+            started = json.loads(ws.receive_text())
+            assert started["type"] == "session_started"
+
+            # Send one chunk to give the consumer task time to raise.
+            silence = base64.b64encode(b"\x00" * 32000).decode("ascii")
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "audio_chunk",
+                        "sessionId": "sess-fail",
+                        "seq": 1,
+                        "pcmBase64": silence,
+                    }
+                )
+            )
+
+            # Next non-session_started frame must be the failure error.
+            err_frame: dict | None = None
+            for _ in range(20):
+                frame = json.loads(ws.receive_text())
+                if frame["type"] == "error":
+                    err_frame = frame
+                    break
+                if frame["type"] == "session_ended":
+                    pytest.fail("session_ended emitted on STT failure path")
+
+            assert err_frame is not None, "never received error frame"
+            assert err_frame["code"] == "STT_PROVIDER_FAILURE"
+            assert err_frame["recoverable"] is False
+            assert "simulated 401" in err_frame["message"]
+
+            with pytest.raises(WebSocketDisconnect):
+                # Drain frames until the server closes; if a session_ended
+                # ever arrives, that's a regression.
+                for _ in range(10):
+                    frame = json.loads(ws.receive_text())
+                    if frame["type"] == "session_ended":
+                        pytest.fail("session_ended emitted on STT failure path")
+    finally:
+        _clear_overrides()
+
+
+def test_stt_failure_logs_at_error_level(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The route logs `transcript.stt_failure` at ERROR when the provider raises."""
+    from starlette.websockets import WebSocketDisconnect
+
+    _override_with_failing_stt()
+    caplog.set_level(logging.ERROR, logger="meeting_intelligence.transcript")
+    try:
+        with client.websocket_connect("/transcript/ws/sess-fail-log") as ws:
+            ws.send_text(json.dumps(_hello("sess-fail-log")))
+            json.loads(ws.receive_text())  # session_started
+            silence = base64.b64encode(b"\x00" * 32000).decode("ascii")
+            ws.send_text(
+                json.dumps(
+                    {
+                        "type": "audio_chunk",
+                        "sessionId": "sess-fail-log",
+                        "seq": 1,
+                        "pcmBase64": silence,
+                    }
+                )
+            )
+            # Drain until close.
+            with pytest.raises(WebSocketDisconnect):
+                for _ in range(20):
+                    ws.receive_text()
+    finally:
+        _clear_overrides()
+
+    matches = [
+        r for r in caplog.records
+        if r.name == "meeting_intelligence.transcript"
+        and "STT_PROVIDER_FAILURE" in r.getMessage()
+    ]
+    assert matches, "expected an ERROR log mentioning STT_PROVIDER_FAILURE"
+    assert all(r.levelno == logging.ERROR for r in matches)
 
 
 def test_invalid_base64_audio_chunk_emits_error(client: TestClient) -> None:
