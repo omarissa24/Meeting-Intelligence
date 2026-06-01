@@ -33,6 +33,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "minimumSystemVersion": "13.0",
+      "entitlements": "Entitlements.plist",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Meeting Intelligence captures your microphone so meeting audio can be transcribed locally before any data leaves your machine.",
+        "NSScreenCaptureUsageDescription": "Meeting Intelligence captures the audio from your meetings (Zoom, Teams, Meet, etc.) via macOS screen capture so the conversation can be transcribed.",
+        "NSScreenRecordingUsageDescription": "Meeting Intelligence needs screen recording access to capture system audio from meetings — only audio is read; the screen image is discarded."
+      }
+    }
   }
 }

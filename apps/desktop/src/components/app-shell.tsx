@@ -1,11 +1,66 @@
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+
 import { ConnectionStatus } from "@/components/connection-status";
+import { PermissionPrompt } from "@/components/permission-prompt";
 import { RecordControl } from "@/components/record-control";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
 import { useRecording } from "@/hooks/use-recording";
 
 export function AppShell() {
-  const { phase, elapsedMs, wsState, start, stop } = useRecording();
+  const {
+    phase,
+    elapsedMs,
+    wsState,
+    error,
+    permissionState,
+    start,
+    stop,
+    requestPermissions,
+  } = useRecording();
+
+  const [permPromptOpen, setPermPromptOpen] = useState(false);
+
+  // Auto-open the explainer dialog whenever the user lands in
+  // not-determined territory — either on first launch or after the
+  // start flow detected a missing grant. The user can dismiss; the
+  // dialog re-opens next time they click Record while still
+  // not-determined.
+  useEffect(() => {
+    if (permissionState === "not-determined") {
+      setPermPromptOpen(true);
+    } else {
+      setPermPromptOpen(false);
+    }
+  }, [permissionState]);
+
+  // Surface recording errors via the existing Sonner toaster. Non-fatal
+  // permission flow cancellations come through as empty strings (see
+  // use-recording.ts) — those are intentional and not surfaced.
+  useEffect(() => {
+    if (error) toast.error(error);
+  }, [error]);
+
+  const handleStart = () => {
+    void start();
+  };
+
+  const handleStop = () => {
+    void stop();
+  };
+
+  const handlePermissionRequest = async () => {
+    const next = await requestPermissions();
+    if (next === "granted") {
+      // Got both grants — start the session immediately so the user's
+      // initial click on Record carries through without a second tap.
+      setPermPromptOpen(false);
+      void start();
+    }
+    // On denied / unknown, leave the dialog open so the user sees
+    // the toast surfacing the System Settings hint.
+  };
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
@@ -26,12 +81,8 @@ export function AppShell() {
           <RecordControl
             phase={phase}
             elapsedMs={elapsedMs}
-            onStart={() => {
-              void start();
-            }}
-            onStop={() => {
-              void stop();
-            }}
+            onStart={handleStart}
+            onStop={handleStop}
           />
         </section>
         <section className="min-h-0 flex-1">
@@ -45,6 +96,15 @@ export function AppShell() {
         </span>
         <ConnectionStatus state={wsState} />
       </footer>
+
+      <PermissionPrompt
+        open={permPromptOpen}
+        onOpenChange={setPermPromptOpen}
+        onRequest={() => {
+          void handlePermissionRequest();
+        }}
+        pending={phase === "requesting-permissions"}
+      />
     </div>
   );
 }

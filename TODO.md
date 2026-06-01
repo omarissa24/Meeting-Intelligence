@@ -14,7 +14,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 
 - [ ] **US-01 — Start a recording session with one click**
   - [x] Record button visible in main window at all times
-  - [ ] First-launch triggers OS permission prompts for microphone and screen audio
+  - [x] First-launch triggers OS permission prompts for microphone and screen audio
   - [ ] Recording begins within 2 seconds of permission grant
   - [x] UI shows pulsing red indicator + elapsed-time counter while recording
   - [x] Button toggles to Stop while recording is in progress
@@ -37,8 +37,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] Audio capture works on Windows 10+ via WASAPI loopback
   - [ ] No additional drivers or software required after install
 - [ ] **US-05 — Automatic silence filtering**
-  - [ ] VAD runs locally on every 20 ms frame before transmission
-  - [ ] Silence frames dropped and not transmitted to STT
+  - [x] VAD runs locally on every 20 ms frame before transmission
+  - [x] Silence frames dropped and not transmitted to STT
   - [ ] VAD sensitivity tunable via settings value (not user-exposed in MVP)
   - [ ] Silence filtering reduces transmitted audio ≥30% in typical meetings
 - [ ] **US-06 — Connection loss recovery**
@@ -48,7 +48,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] Buffered audio replayed to STT API on reconnect
   - [ ] Session auto-stopped and user notified if reconnection fails after 5 minutes
 - [ ] **US-07 — App stays responsive during a meeting**
-  - [ ] Audio capture runs on dedicated native thread, isolated from UI thread
+  - [x] Audio capture runs on dedicated native thread, isolated from UI thread
   - [ ] React UI maintains 60 fps during active transcription
   - [ ] Total CPU usage ≤8% on a modern 4-core machine during capture
   - [ ] Total RAM usage ≤200 MB during a 2-hour session
@@ -56,10 +56,10 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 ### Functional Requirements
 
 - [x] **FR-1.01 (Must)** Tauri shell provides single-window UI with Record, Stop, Settings
-- [ ] **FR-1.02 (Must)** Rust capture layer captures system loopback + mic as separate streams
-- [ ] **FR-1.03 (Must)** Both streams mixed and resampled to 16 kHz mono PCM before transmission
-- [ ] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission
-- [ ] **FR-1.05 (Must)** Processed audio sent over secure WebSocket to FastAPI gateway in 1-second payloads
+- [x] **FR-1.02 (Must)** Rust capture layer captures system loopback + mic as separate streams
+- [x] **FR-1.03 (Must)** Both streams mixed and resampled to 16 kHz mono PCM before transmission
+- [x] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission
+- [x] **FR-1.05 (Must)** Processed audio sent over secure WebSocket to FastAPI gateway in 1-second payloads
 - [x] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
 - [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
 - [ ] **FR-1.08 (Must)** UI renders transcript lines with max display latency of 1.5 s
@@ -68,8 +68,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **FR-1.11 (Should)** Up to 30 s of audio buffered locally during disconnection and replayed
 - [ ] **FR-1.12 (Must)** macOS uses ScreenCaptureKit; Windows uses WASAPI loopback
 - [ ] **FR-1.13 (Must)** Binary signed for macOS (Developer ID) and Windows (Authenticode)
-- [ ] **FR-1.14 (Must)** Audio capture runs on dedicated thread, does not block UI render loop
-- [ ] **FR-1.15 (Must)** App requests mic + screen recording permissions on first launch, handles denial gracefully
+- [x] **FR-1.14 (Must)** Audio capture runs on dedicated thread, does not block UI render loop
+- [x] **FR-1.15 (Must)** App requests mic + screen recording permissions on first launch, handles denial gracefully
 
 ### Definition of Done — Phase 1 Exit Criteria
 

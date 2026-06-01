@@ -20,3 +20,32 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
+
+# Cross-platform audio bits live here. cpal is fine on Linux/Windows too;
+# we just don't compile a non-macOS source until WASAPI lands.
+rubato = "3"
+audioadapter-buffers = "3"
+webrtc-vad = "0.4"
+base64 = "0.22"
+
+# Audio capture — macOS-only for now. Behind cfg(target_os) so the desktop
+# crate still builds on Linux for `cargo check` in CI.
+[target.'cfg(target_os = "macos")'.dependencies]
+screencapturekit = { version = "6", features = ["macos_13_0"] }
+bytemuck = "1"
+cpal = "0.17"
+# Permission checks: AVCaptureDevice.authorizationStatusForMediaType /
+# requestAccessForMediaType. block2 is needed for the request's
+# completion-handler block. Foundation supplies NSString and the runtime.
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSThread"] }
+objc2-av-foundation = { version = "0.3", features = [
+    "AVCaptureDevice",
+    "AVMediaFormat",
+] }
+block2 = "0.6"
+
+[[example]]
+name = "sckit_spike"
+path = "examples/sckit_spike.rs"
+required-features = []

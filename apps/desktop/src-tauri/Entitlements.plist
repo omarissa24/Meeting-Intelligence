@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<!--
+  Entitlements for Meeting Intelligence (macOS).
+
+  This slice is unsigned dev-only — see plan
+  ~/.claude/plans/zippy-meandering-bachman.md, "Out of scope: signed bundles
+  (FR-1.13)". Even unsigned, we still declare audio-input here so:
+    1. The macOS Privacy & Security flow knows we're an audio-capable app.
+    2. When code signing lands in a follow-up slice, the entitlements
+       baseline is already correct and `codesign` won't reject the binary.
+
+  We deliberately do NOT enable App Sandbox (com.apple.security.app-sandbox).
+  ScreenCaptureKit + cpal CoreAudio routing both work cleanly outside the
+  sandbox; once we ship to the App Store (way later) we'll need to add the
+  sandbox key plus the audio-input + screen-capture temporary-exception
+  entitlements.
+-->
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
+</plist>

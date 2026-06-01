@@ -19,7 +19,11 @@ interface RecordControlProps {
 }
 
 const isLive = (p: RecordingPhase): boolean => p === "recording" || p === "stopping";
-const isBusy = (p: RecordingPhase): boolean => p === "starting" || p === "stopping";
+const isBusy = (p: RecordingPhase): boolean =>
+  p === "starting" ||
+  p === "stopping" ||
+  p === "checking-permissions" ||
+  p === "requesting-permissions";
 
 export function RecordControl({ phase, elapsedMs, onStart, onStop }: RecordControlProps) {
   const live = isLive(phase);
@@ -74,6 +78,10 @@ function phaseLabel(p: RecordingPhase): string {
   switch (p) {
     case "idle":
       return "Ready";
+    case "checking-permissions":
+      return "Checking access…";
+    case "requesting-permissions":
+      return "Awaiting access…";
     case "starting":
       return "Starting…";
     case "recording":
