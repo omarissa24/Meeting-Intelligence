@@ -226,4 +226,125 @@ mod tests {
             assert_eq!(*len, FIXED_OUTPUT_FRAMES, "every chunk must be 320 samples");
         }
     }
+
+    #[test]
+    fn identity_rate_passes_through_zero_filled_input() {
+        // 16 kHz → 16 kHz: ratio = 1.0. Sinc resamplers still introduce
+        // a small filter delay, but feeding zeros should always produce
+        // zeros downstream. This locks the identity-rate path against
+        // future regressions where someone might shortcut around the
+        // resampler at ratio==1.0.
+        let mut r = SourceResampler::new(TARGET_RATE).expect("construct");
+        assert_eq!(r.input_rate(), TARGET_RATE);
+
+        let needed = r.input_frames_next();
+        let input = vec![0.0f32; needed];
+        let mut output = vec![1.234f32; FIXED_OUTPUT_FRAMES]; // sentinel
+        let written = r.process_one_chunk(&input, &mut output).unwrap();
+        assert_eq!(written, FIXED_OUTPUT_FRAMES);
+        for s in &output {
+            assert_eq!(*s, 0.0, "identity-rate zeros in → zeros out");
+        }
+    }
+
+    #[test]
+    fn upsample_8k_to_16k_emits_320_sample_chunks() {
+        // 8 kHz → 16 kHz: ratio = 2.0. ~1 s of input → ~16 000 output
+        // samples → ~50 chunks.
+        let mut r = SourceResampler::new(8_000).expect("construct");
+        let input = vec![0.0f32; 8_000];
+        let mut chunk_lens = Vec::new();
+        let n = r
+            .push_and_drain(&input, |chunk| chunk_lens.push(chunk.len()))
+            .expect("push_and_drain");
+        assert!(n > 0, "expected at least one upsampled chunk");
+        for len in &chunk_lens {
+            assert_eq!(*len, FIXED_OUTPUT_FRAMES);
+        }
+    }
+
+    #[test]
+    fn state_persists_across_push_and_drain_calls() {
+        // Feed one second of input split into 4 quarter-second pushes.
+        // The internal scratch buffer must stitch them together so the
+        // chunk count matches a single-shove call within ±1 (sinc filter
+        // settle-time can shift the boundary by one chunk).
+        let single_count = {
+            let mut r = SourceResampler::new(48_000).expect("construct");
+            r.push_and_drain(&vec![0.0f32; 48_000], |_| {}).unwrap()
+        };
+
+        let mut r = SourceResampler::new(48_000).expect("construct");
+        let mut split_count = 0;
+        for _ in 0..4 {
+            split_count += r
+                .push_and_drain(&vec![0.0f32; 12_000], |_| {})
+                .unwrap();
+        }
+        assert!(
+            (single_count as i32 - split_count as i32).abs() <= 1,
+            "split feed should match single feed within ±1 chunk: single={single_count} split={split_count}",
+        );
+    }
+
+    #[test]
+    fn invalid_input_rate_zero_returns_error() {
+        // `Result::unwrap_err` would require SourceResampler: Debug, which
+        // we don't want to add for tests alone — match on Ok/Err directly.
+        match SourceResampler::new(0) {
+            Ok(_) => panic!("rate=0 must error"),
+            Err(ResamplerError::InvalidInputRate(rate)) => assert_eq!(rate, 0),
+            Err(e) => panic!("expected InvalidInputRate, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn partial_input_below_chunk_size_does_not_emit() {
+        // Push a single sample at 48 kHz — far less than `input_frames_next()`,
+        // which at 48 kHz is in the ~960-sample range. The drain callback
+        // must not fire.
+        let mut r = SourceResampler::new(48_000).expect("construct");
+        let mut emitted = 0;
+        let n = r
+            .push_and_drain(&[0.0f32], |_| emitted += 1)
+            .expect("push_and_drain");
+        assert_eq!(n, 0, "partial input must not produce a chunk");
+        assert_eq!(emitted, 0, "callback must not fire for partial input");
+    }
+
+    #[test]
+    fn process_one_chunk_rejects_undersized_output_buffer() {
+        let mut r = SourceResampler::new(48_000).expect("construct");
+        let needed = r.input_frames_next();
+        let input = vec![0.0f32; needed];
+        let mut tiny = vec![0.0f32; FIXED_OUTPUT_FRAMES - 1];
+        match r.process_one_chunk(&input, &mut tiny).unwrap_err() {
+            ResamplerError::Process(msg) => {
+                assert!(msg.contains("output buffer"), "unexpected message: {msg}");
+            }
+            e => panic!("expected Process error, got {e:?}"),
+        }
+    }
+
+    #[test]
+    fn process_one_chunk_rejects_input_length_mismatch() {
+        // process_one_chunk demands exactly `input_frames_next()` samples.
+        // Feeding even one fewer should error out before touching rubato.
+        let mut r = SourceResampler::new(48_000).expect("construct");
+        let needed = r.input_frames_next();
+        let too_short = vec![0.0f32; needed - 1];
+        let mut output = vec![0.0f32; FIXED_OUTPUT_FRAMES];
+        match r
+            .process_one_chunk(&too_short, &mut output)
+            .unwrap_err()
+        {
+            ResamplerError::Process(msg) => {
+                assert!(
+                    msg.contains("input frames"),
+                    "unexpected message: {msg}",
+                );
+            }
+            e => panic!("expected Process error, got {e:?}"),
+        }
+    }
 }
