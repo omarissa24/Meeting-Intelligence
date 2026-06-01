@@ -82,7 +82,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] CI produces signed `.dmg` and `.msi` from main branch with no manual intervention
 - [ ] No crashes or audio glitches during a minimum 30-minute manual test session
 - [ ] Code reviewed and merged to main; no critical/high-severity lint errors
-- [ ] Unit tests cover VAD frame processing, PCM resampling, and WebSocket reconnection (≥70% coverage on those modules)
+- [x] Unit tests cover VAD frame processing, PCM resampling, and WebSocket reconnection (≥70% coverage on those modules)
 
 ---
 
