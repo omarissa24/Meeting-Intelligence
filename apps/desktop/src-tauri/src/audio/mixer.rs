@@ -274,4 +274,51 @@ mod tests {
             assert!((*s - 1.0).abs() < 1e-6, "expected 1.0, got {s}");
         }
     }
+
+    #[test]
+    fn drift_cycle_under_overlap_does_not_panic_and_keeps_emitting() {
+        // Stress test for the failure mode that overlapping speakers create:
+        // one source consistently leads the other by enough to keep firing
+        // the drift-resync branch (`handle_drift`). The earlier tests cover
+        // steady-state mixing; this one cycles the drift branch thousands
+        // of times to confirm:
+        //   - the drift branch executes (system_drift_drops increments)
+        //   - the mixer keeps emitting chunks under sustained drift
+        //   - drop counters stay bounded (no runaway)
+        //   - no panic (implicit — the test reaches its end)
+        //
+        // Push 51 ms (816 samples) to system and 20 ms (320 samples) to mic
+        // each iteration. After enough iterations the system queue runs
+        // > 800 samples ahead, triggers the drift branch, drops up to
+        // 320 samples, and the cycle repeats.
+        const SYSTEM_AHEAD_MS_SAMPLES: usize = 816; // 51 ms at 16 kHz
+        const MIC_FRAME_SAMPLES: usize = 320; // 20 ms at 16 kHz
+        const ITERATIONS: usize = 2_000;
+
+        let mut m = Mixer::new();
+        let mut emitted = 0u64;
+        let mut scratch = vec![0.0f32; FIXED_OUTPUT_FRAMES];
+        for _ in 0..ITERATIONS {
+            m.push_system(&vec![0.5f32; SYSTEM_AHEAD_MS_SAMPLES]);
+            m.push_mic(&vec![0.5f32; MIC_FRAME_SAMPLES]);
+            while m.try_emit_chunk(&mut scratch) {
+                emitted += 1;
+            }
+        }
+
+        let stats = m.stats();
+        assert!(
+            stats.system_drift_drops > 0,
+            "drift branch must have fired at least once",
+        );
+        assert!(emitted > 0, "mixer must keep emitting under drift");
+        // Bound generously — ~2 drift drops/iteration is the analytical
+        // expectation, so 10× ITERATIONS is comfortably above signal but
+        // far below "runaway." If this ever fires we want to look.
+        assert!(
+            stats.system_drift_drops < (ITERATIONS as u64) * 10,
+            "drift drops unbounded: {}",
+            stats.system_drift_drops,
+        );
+    }
 }

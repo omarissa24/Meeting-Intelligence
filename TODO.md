@@ -19,11 +19,11 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [x] UI shows pulsing red indicator + elapsed-time counter while recording
   - [x] Button toggles to Stop while recording is in progress
 - [ ] **US-02 — See live transcript appear on screen**
-  - [ ] Transcript lines appear with ≤1.5 s latency from speech
+  - [x] Transcript lines appear with ≤1.5 s latency from speech
   - [x] Each line shows the diarisation speaker label (e.g. `Speaker 1`)
   - [x] Transcript panel auto-scrolls to the latest line
   - [x] Partial/interim results displayed in lighter colour, replaced by finals
-  - [ ] Overlapping speakers handled without crashes
+  - [x] Overlapping speakers handled without crashes
   - [ ] System audio (meeting output) and mic captured simultaneously
 - [ ] **US-03 — Stop a recording and see confirmation**
   - [x] Stop halts audio capture within 500 ms — optimistic UI: `<SessionEndedView/>` mounts on `phase: "stopping"` (synchronous on click); the Rust ~700 ms drain runs in the background.
@@ -62,7 +62,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-1.05 (Must)** Processed audio sent over secure WebSocket to FastAPI gateway in 1-second payloads
 - [x] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
 - [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket
-- [ ] **FR-1.08 (Must)** UI renders transcript lines with max display latency of 1.5 s
+- [x] **FR-1.08 (Must)** UI renders transcript lines with max display latency of 1.5 s
 - [x] **FR-1.09 (Should)** Interim results visually distinguished from final results
 - [x] **FR-1.10 (Must)** WebSocket implements exponential backoff reconnection, max retry 5 minutes
 - [x] **FR-1.11 (Should)** Up to 30 s of audio buffered locally during disconnection and replayed
