@@ -74,11 +74,14 @@ export function useRecording() {
   const errorUnlistenRef = useRef<(() => void) | null>(null);
   // Guard against double-firing the auto-stop when phase flips to failed.
   const autoStopFiredRef = useRef(false);
-  // Wall-clock timestamp of the most recently sent audio_chunk. Compared
-  // against the arrival time of each isFinal transcript_line to log a
-  // rough end-to-end latency in dev. Single value, not per-seq — Deepgram's
-  // session-relative timing fields make seq alignment noisy without payoff.
+  // Wall-clock timestamp + seq of the most recently sent audio_chunk.
+  // Diff'd against the arrival time of each isFinal transcript_line to
+  // emit a structured `[latency]` log line for parse-latency-log.mjs.
+  // Per-seq alignment is noisy because Deepgram's session-relative
+  // timing reflects audio fed in (post-VAD/post-drift), so this is the
+  // best cheap proxy we have for round-trip latency.
   const lastChunkSentAtMsRef = useRef<number | null>(null);
+  const lastChunkSentSeqRef = useRef<number | null>(null);
 
   // Drive the elapsed timer at 250ms — under the perceptual threshold for
   // a mm:ss display, well above 60fps so the layout never thrashes.
@@ -230,18 +233,31 @@ export function useRecording() {
       onMessage: (msg) => {
         switch (msg.type) {
           case "transcript_line": {
+            const lineRecvMs = Date.now();
             appendLine(msg.line);
-            // Dev-only end-to-end latency log: chunk-sent → final-received.
+            // Structured per-line latency log for offline aggregation by
+            // scripts/parse-latency-log.mjs. Headline metric is e2eMs =
+            // last chunk WS-send → final-line arrival; this captures
+            // network → backend → Deepgram → backend → frontend round
+            // trip. The fixed ~1 s encoder buffer that precedes wsSendMs
+            // is a known constant — worst-case capture→render ≈ e2eMs +
+            // CHUNK_DURATION_MS. Only log finals to keep volume sane.
             if (
               msg.line.isFinal &&
               lastChunkSentAtMsRef.current != null
             ) {
-              const e2eMs = Date.now() - lastChunkSentAtMsRef.current;
-              console.debug(
-                "[latency] e2e_ms=%d text=%s",
-                e2eMs,
-                msg.line.text.slice(0, 40),
-              );
+              const wsSendMs = lastChunkSentAtMsRef.current;
+              const sample = {
+                seq: lastChunkSentSeqRef.current,
+                wsSendMs,
+                lineRecvMs,
+                e2eMs: lineRecvMs - wsSendMs,
+                isFinal: msg.line.isFinal,
+                textLen: msg.line.text.length,
+                deepgramStartMs: msg.line.startMs,
+                deepgramEndMs: msg.line.endMs,
+              };
+              console.debug("[latency] " + JSON.stringify(sample));
             }
             break;
           }
@@ -311,6 +327,7 @@ export function useRecording() {
         result.sessionId,
         (payload: AudioChunkPayload) => {
           lastChunkSentAtMsRef.current = Date.now();
+          lastChunkSentSeqRef.current = payload.seq;
           wsRef.current?.send({
             type: "audio_chunk",
             sessionId: payload.sessionId,
