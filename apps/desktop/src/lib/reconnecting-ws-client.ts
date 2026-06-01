@@ -235,7 +235,13 @@ export function createReconnectingWsClient(
         // Errors before open: rely on the close that follows. If a stray
         // error lands after open without a close, the next close handles it.
       },
-      onMessage: (msg) => handlers.onMessage(msg),
+      onMessage: (msg) => {
+        try {
+          handlers.onMessage(msg);
+        } catch (err) {
+          console.error("[reconnecting-ws] onMessage threw", err);
+        }
+      },
       onParseError: (raw, err) => handlers.onParseError?.(raw, err),
     };
 

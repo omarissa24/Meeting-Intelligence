@@ -470,4 +470,51 @@ describe("createReconnectingWsClient", () => {
     expect(snaps.at(-1)?.bufferedChunkCount).toBe(30);
     expect(snaps.at(-1)?.droppedChunkCount).toBe(5);
   });
+
+  it("onMessage exceptions are swallowed and do not break the client", () => {
+    const { instances, connectFn } = makeFakeFactory();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // First call throws, subsequent calls no-op. Typed as
+    // `(msg: ServerWsMessage) => void` so vi doesn't infer the
+    // throwing mock's signature as `() => never` (which would clash
+    // with the mockImplementationOnce return type below).
+    const onMessage: (msg: ServerWsMessage) => void = vi
+      .fn<(msg: ServerWsMessage) => void>()
+      .mockImplementationOnce(() => {
+        throw new Error("user handler boom");
+      })
+      .mockImplementation(() => {});
+    const client = createReconnectingWsClient(
+      "sess",
+      { onMessage },
+      { connectFn, jitter: false },
+    );
+
+    instances[0].triggerOpen();
+    instances[0].triggerMessage({
+      type: "session_started",
+      sessionId: "sess",
+      startedAt: "2026-06-01T00:00:00Z",
+      sttProvider: "echo",
+    });
+
+    expect(client.getPhase()).toEqual({ kind: "open" });
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(
+      "[reconnecting-ws] onMessage threw",
+      expect.any(Error),
+    );
+
+    // Subsequent good messages still flow through — the dispatch path
+    // is not poisoned by the previous throw.
+    instances[0].triggerMessage({
+      type: "session_started",
+      sessionId: "sess",
+      startedAt: "2026-06-01T00:00:01Z",
+      sttProvider: "echo",
+    });
+    expect(onMessage).toHaveBeenCalledTimes(2);
+
+    errSpy.mockRestore();
+  });
 });
