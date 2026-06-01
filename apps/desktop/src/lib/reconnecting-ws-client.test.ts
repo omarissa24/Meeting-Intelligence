@@ -27,6 +27,7 @@ function makeFakeFactory() {
     triggerOpen: () => void;
     triggerClose: () => void;
     triggerMessage: (msg: ServerWsMessage) => void;
+    triggerParseError: (raw: string, err: unknown) => void;
   };
 
   const instances: Inst[] = [];
@@ -43,6 +44,7 @@ function makeFakeFactory() {
       triggerOpen: () => handlers.onOpen?.(),
       triggerClose: () => handlers.onClose?.(new CloseEvent("close")),
       triggerMessage: (msg) => handlers.onMessage(msg),
+      triggerParseError: (raw, err) => handlers.onParseError?.(raw, err),
     };
     instances.push(inst);
     return {
@@ -297,5 +299,175 @@ describe("createReconnectingWsClient", () => {
     const lenBefore = snaps.length;
     client.send(audioMsg(1));
     expect(snaps.length).toBe(lenBefore); // no further snaps after unsub
+  });
+
+  it("applies the documented backoff schedule across consecutive failures", () => {
+    // Drive five consecutive close-without-open cycles and assert each
+    // retry timer fires at the expected delay: 1s, 2s, 4s, 8s, 16s.
+    // (30s caps come later in the schedule; the existing budget test
+    // already exercises that ceiling indirectly.)
+    const { instances, connectFn } = makeFakeFactory();
+    createReconnectingWsClient(
+      "sess",
+      { onMessage: vi.fn() },
+      { connectFn, jitter: false },
+    );
+
+    instances[0].triggerOpen();
+    instances[0].triggerClose();
+
+    const expectedDelays = [1_000, 2_000, 4_000, 8_000, 16_000];
+    for (let step = 0; step < expectedDelays.length; step += 1) {
+      const delay = expectedDelays[step];
+      // 1ms before the deadline → no new instance yet.
+      vi.advanceTimersByTime(delay - 1);
+      expect(instances).toHaveLength(step + 1);
+      // Cross the deadline → new connect spawned.
+      vi.advanceTimersByTime(1);
+      expect(instances).toHaveLength(step + 2);
+      // Fail this attempt before it would open, queueing the next.
+      instances[step + 1].triggerClose();
+    }
+  });
+
+  it("drops non-audio messages while reconnecting and warns", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { instances, connectFn } = makeFakeFactory();
+    const client = createReconnectingWsClient(
+      "sess",
+      { onMessage: vi.fn() },
+      { connectFn, jitter: false },
+    );
+
+    instances[0].triggerOpen();
+    instances[0].triggerClose();
+    expect(client.getPhase().kind).toBe("reconnecting");
+
+    // Non-audio frames (e.g. a hypothetical control message) must NOT
+    // be queued — only audio_chunks survive a reconnect. Use a session
+    // control type that the union admits but that the buffer ignores.
+    client.send({
+      type: "audio_chunk",
+      sessionId: "sess",
+      seq: 1,
+      pcmBase64: "ok",
+    });
+    expect(client.getBufferedCount()).toBe(1);
+
+    // Now try a non-audio frame — buffer count must NOT increase.
+    // (We cast through `as unknown` because the message union currently
+    // only contains audio_chunk; the runtime path still handles the
+    // `else` branch defensively.)
+    const nonAudio = { type: "synthetic_non_audio" } as unknown as ClientWsMessage;
+    client.send(nonAudio);
+    expect(client.getBufferedCount()).toBe(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("non-audio"),
+      expect.anything(),
+    );
+
+    warn.mockRestore();
+  });
+
+  it("onReconnected exceptions do not block reconnect completion or buffer drain", async () => {
+    const { instances, connectFn } = makeFakeFactory();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onReconnected = vi.fn(() => {
+      throw new Error("user handler boom");
+    });
+    const client = createReconnectingWsClient(
+      "sess",
+      { onMessage: vi.fn(), onReconnected },
+      { connectFn, jitter: false },
+    );
+
+    instances[0].triggerOpen();
+    instances[0].triggerClose();
+
+    // Buffer some chunks during the reconnect window.
+    for (let i = 0; i < 3; i += 1) client.send(audioMsg(i));
+
+    vi.advanceTimersByTime(1_000); // attempt 1 fires
+    instances[1].triggerOpen(); // reopen — onReconnected throws here
+
+    expect(client.getPhase()).toEqual({ kind: "open" });
+    expect(onReconnected).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(
+      "[reconnecting-ws] onReconnected threw",
+      expect.any(Error),
+    );
+
+    // Buffered chunks still drained despite the throw.
+    await vi.advanceTimersByTimeAsync(10);
+    expect(instances[1].sent).toHaveLength(3);
+
+    errSpy.mockRestore();
+  });
+
+  it("onReconnectFailed exceptions are swallowed", () => {
+    const { instances, connectFn } = makeFakeFactory();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onReconnectFailed = vi.fn(() => {
+      throw new Error("failure handler boom");
+    });
+    const client = createReconnectingWsClient(
+      "sess",
+      { onMessage: vi.fn(), onReconnectFailed },
+      // Tiny budget so the second scheduling attempt (after the first
+      // retry has burned 1 s of wall clock) exhausts it.
+      { connectFn, jitter: false, maxBudgetMs: 1 },
+    );
+
+    instances[0].triggerOpen();
+    instances[0].triggerClose(); // anchors firstFailureAtMs, schedules t+1000
+    // Advance past the first retry delay so attempt 1 spins up.
+    vi.advanceTimersByTime(1_000);
+    expect(instances).toHaveLength(2);
+    // Close that attempt before it opens — `scheduleNextAttempt` will
+    // now see elapsed (1000ms) >= budget (1ms) and transition to failed.
+    instances[1].triggerClose();
+
+    expect(client.getPhase().kind).toBe("failed");
+    expect(onReconnectFailed).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(
+      "[reconnecting-ws] onReconnectFailed threw",
+      expect.any(Error),
+    );
+
+    errSpy.mockRestore();
+  });
+
+  it("forwards parse errors to onParseError when supplied", () => {
+    const { instances, connectFn } = makeFakeFactory();
+    const onParseError = vi.fn();
+    createReconnectingWsClient(
+      "sess",
+      { onMessage: vi.fn(), onParseError },
+      { connectFn, jitter: false },
+    );
+    instances[0].triggerOpen();
+    instances[0].triggerParseError("garbage{", new Error("bad json"));
+    expect(onParseError).toHaveBeenCalledWith(
+      "garbage{",
+      expect.any(Error),
+    );
+  });
+
+  it("subscribers see drop count incrementing as buffer overflows", () => {
+    const { instances, connectFn } = makeFakeFactory();
+    const snaps: ReconnectingWsObserver[] = [];
+    const client = createReconnectingWsClient(
+      "sess",
+      { onMessage: vi.fn() },
+      { connectFn, jitter: false, maxBufferedChunks: 30 },
+    );
+    client.subscribe((s) => snaps.push(s));
+
+    instances[0].triggerOpen();
+    instances[0].triggerClose();
+    for (let i = 0; i < 35; i += 1) client.send(audioMsg(i));
+
+    expect(snaps.at(-1)?.bufferedChunkCount).toBe(30);
+    expect(snaps.at(-1)?.droppedChunkCount).toBe(5);
   });
 });
