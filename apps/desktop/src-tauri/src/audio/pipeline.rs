@@ -25,11 +25,13 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+use webrtc_vad::VadMode;
+
 use crate::audio::encoder::{ChunkEncoder, EncodedChunk, EncoderStats};
 use crate::audio::mixer::{Mixer, MixerStats};
 use crate::audio::resampler::{SourceResampler, FIXED_OUTPUT_FRAMES, TARGET_RATE};
 use crate::audio::traits::{AudioFrame, SourceKind};
-use crate::audio::vad::VadGate;
+use crate::audio::vad::{parse_vad_mode, VadGate, VAD_MODE_ENV_VAR};
 
 /// Bound on the input-side channel — ~200 callbacks of slack. Enough
 /// that brief jitter in the worker doesn't drop frames; small enough
@@ -153,9 +155,17 @@ pub fn spawn() -> PipelineHandle {
         "audio/pipeline: mic gain = {resolved_db:+.1} dB (linear ~{mic_gain_factor:.3})"
     );
 
+    // Resolve VAD aggressiveness mode the same way — picked once per
+    // session at spawn so the value the operator set when they clicked
+    // Record is the value the worker uses end-to-end.
+    let vad_mode = parse_vad_mode(std::env::var(VAD_MODE_ENV_VAR).ok().as_deref());
+    eprintln!("audio/pipeline: vad mode = {}", vad_mode_label(&vad_mode));
+
     let join = std::thread::Builder::new()
         .name("audio-pipeline".into())
-        .spawn(move || run_worker(audio_rx, chunk_tx, stop_rx, worker_dropped, mic_gain_factor))
+        .spawn(move || {
+            run_worker(audio_rx, chunk_tx, stop_rx, worker_dropped, mic_gain_factor, vad_mode)
+        })
         .expect("failed to spawn audio-pipeline thread");
 
     PipelineHandle {
@@ -173,9 +183,10 @@ fn run_worker(
     stop_rx: Receiver<()>,
     output_dropped_counter: Arc<AtomicU64>,
     mic_gain_factor: f32,
+    vad_mode: VadMode,
 ) -> PipelineStats {
     let mut mixer = Mixer::new();
-    let mut vad = VadGate::quality();
+    let mut vad = VadGate::new(vad_mode);
     let mut encoder = ChunkEncoder::new();
     // Lazy-init: we don't know cpal's rate until the first mic frame.
     let mut mic_resampler: Option<SourceResampler> = None;
@@ -470,6 +481,17 @@ fn dbfs(amp: f32) -> f32 {
 /// Convert a dB value to a linear amplitude factor: `10 ** (db / 20)`.
 fn db_to_linear(db: f32) -> f32 {
     10f32.powf(db / 20.0)
+}
+
+/// `webrtc_vad::VadMode` doesn't derive `Debug`. Render a stable
+/// human-readable label for the spawn-time log line.
+fn vad_mode_label(mode: &VadMode) -> &'static str {
+    match mode {
+        VadMode::Quality => "quality",
+        VadMode::LowBitrate => "low-bitrate",
+        VadMode::Aggressive => "aggressive",
+        VadMode::VeryAggressive => "very-aggressive",
+    }
 }
 
 /// Parse `MIC_GAIN_DB`-style env values into a linear gain factor.

@@ -39,7 +39,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **US-05 — Automatic silence filtering**
   - [x] VAD runs locally on every 20 ms frame before transmission
   - ~~- [x] Silence frames dropped and not transmitted to STT~~ — reverted: dropping silence collapses the audio stream and breaks Deepgram's endpointing. VAD now runs for stats only; bandwidth-saving drop will return on the MP3-archive path (FR-2.06).
-  - [ ] VAD sensitivity tunable via settings value (not user-exposed in MVP)
+  - [x] VAD sensitivity tunable via settings value (not user-exposed in MVP) — implemented as `VAD_MODE` env override (`quality` | `low-bitrate` | `aggressive` | `very-aggressive`); see `apps/desktop/src-tauri/src/audio/vad.rs::parse_vad_mode`. User-facing settings UI ships in Phase 4 / US-25.
   - [ ] Silence filtering reduces transmitted audio ≥30% in typical meetings
 - [ ] **US-06 — Connection loss recovery**
   - [x] WebSocket drop triggers exponential backoff retry (1 s, 2 s, 4 s, max 30 s)
@@ -50,15 +50,15 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **US-07 — App stays responsive during a meeting**
   - [x] Audio capture runs on dedicated native thread, isolated from UI thread
   - [ ] React UI maintains 60 fps during active transcription
-  - [ ] Total CPU usage ≤8% on a modern 4-core machine during capture
-  - [ ] Total RAM usage ≤200 MB during a 2-hour session
+  - [ ] Total CPU usage ≤8% on a modern 4-core machine during capture — instrumentation now wired via `perf://stats` (Tauri event, ~1 Hz; see `apps/desktop/src-tauri/src/recording.rs::spawn_perf_monitor_thread` and `apps/desktop/src/lib/audio-bridge.ts::subscribePerfStats`); ratification gated on the manual 2-hour soak (DoD line 81).
+  - [ ] Total RAM usage ≤200 MB during a 2-hour session — same `perf://stats` event surfaces `rssMb`; ratification gated on the manual 2-hour soak (DoD line 81).
 
 ### Functional Requirements
 
 - [x] **FR-1.01 (Must)** Tauri shell provides single-window UI with Record, Stop, Settings
 - [x] **FR-1.02 (Must)** Rust capture layer captures system loopback + mic as separate streams
 - [x] **FR-1.03 (Must)** Both streams mixed and resampled to 16 kHz mono PCM before transmission
-- [ ] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission — VAD runs but drop is disabled in the live STT path (collapsing time breaks Deepgram); revisit once MP3-archive path lands and can host the bandwidth-optimized encode.
+- [ ] **FR-1.04 (Must)** WebRTC VAD filters silence on 20 ms frames before transmission — VAD runs but drop is disabled in the live STT path (collapsing time breaks Deepgram); revisit once MP3-archive path lands and can host the bandwidth-optimized encode. Sensitivity is configurable via the `VAD_MODE` env var (`quality` is the default); the user-facing settings UI ships in Phase 4 / US-25.
 - [x] **FR-1.05 (Must)** Processed audio sent over secure WebSocket to FastAPI gateway in 1-second payloads
 - [x] **FR-1.06 (Must)** FastAPI gateway proxies audio to Deepgram Nova-2 streaming WebSocket
 - [x] **FR-1.07 (Must)** Deepgram transcript lines (with speaker labels) broadcast back to desktop via WebSocket

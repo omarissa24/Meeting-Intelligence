@@ -20,6 +20,38 @@ use webrtc_vad::{SampleRate, Vad, VadMode};
 
 use crate::audio::resampler::FIXED_OUTPUT_FRAMES;
 
+/// Env var the audio pipeline reads at session start to pick the VAD
+/// aggressiveness. See `parse_vad_mode` for accepted values.
+pub const VAD_MODE_ENV_VAR: &str = "VAD_MODE";
+
+/// Parse a `VAD_MODE`-style env value into a `VadMode`. Accepts
+/// `"quality"`, `"low-bitrate"`, `"aggressive"`, `"very-aggressive"`
+/// (case-insensitive, trimmed). `None`, empty, or unrecognised input
+/// falls back to `VadMode::Quality` with a warning logged to stderr —
+/// same shape as `pipeline::parse_mic_gain_factor`.
+///
+/// Pure function so the parsing rules stay test-locked.
+pub fn parse_vad_mode(env_value: Option<&str>) -> VadMode {
+    let trimmed = env_value.map(str::trim).filter(|s| !s.is_empty());
+    let Some(s) = trimmed else {
+        return VadMode::Quality;
+    };
+    match s.to_ascii_lowercase().as_str() {
+        "quality" => VadMode::Quality,
+        "low-bitrate" | "lowbitrate" | "low_bitrate" => VadMode::LowBitrate,
+        "aggressive" => VadMode::Aggressive,
+        "very-aggressive" | "veryaggressive" | "very_aggressive" => {
+            VadMode::VeryAggressive
+        }
+        _ => {
+            eprintln!(
+                "audio/vad: invalid {VAD_MODE_ENV_VAR}={s:?}, falling back to quality",
+            );
+            VadMode::Quality
+        }
+    }
+}
+
 /// 320 samples = 20 ms at 16 kHz. webrtc-vad accepts this exact length.
 pub const FRAME_SAMPLES: usize = FIXED_OUTPUT_FRAMES;
 
@@ -310,6 +342,49 @@ mod tests {
         // Classification still works after reset.
         gate.classify(&silence_frame()).unwrap();
         assert_eq!(gate.total_frames(), 1);
+    }
+
+    /// `VadMode` (webrtc-vad 0.4) doesn't derive `PartialEq` or `Debug`,
+    /// but the variants have explicit `i32` discriminants, so we compare
+    /// via cast. This is the same trick we'd use for any foreign enum
+    /// without derives.
+    fn mode_id(m: &VadMode) -> i32 {
+        match m {
+            VadMode::Quality => 0,
+            VadMode::LowBitrate => 1,
+            VadMode::Aggressive => 2,
+            VadMode::VeryAggressive => 3,
+        }
+    }
+
+    #[test]
+    fn parse_vad_mode_default_is_quality() {
+        assert_eq!(mode_id(&parse_vad_mode(None)), 0);
+        assert_eq!(mode_id(&parse_vad_mode(Some(""))), 0);
+        assert_eq!(mode_id(&parse_vad_mode(Some("   "))), 0);
+    }
+
+    #[test]
+    fn parse_vad_mode_recognizes_each_variant() {
+        assert_eq!(mode_id(&parse_vad_mode(Some("quality"))), 0);
+        assert_eq!(mode_id(&parse_vad_mode(Some("low-bitrate"))), 1);
+        assert_eq!(mode_id(&parse_vad_mode(Some("aggressive"))), 2);
+        assert_eq!(mode_id(&parse_vad_mode(Some("very-aggressive"))), 3);
+    }
+
+    #[test]
+    fn parse_vad_mode_is_case_insensitive_and_trimmed() {
+        assert_eq!(mode_id(&parse_vad_mode(Some("  AGGRESSIVE  "))), 2);
+        assert_eq!(mode_id(&parse_vad_mode(Some("Quality"))), 0);
+        assert_eq!(mode_id(&parse_vad_mode(Some("VERY_AGGRESSIVE"))), 3);
+        assert_eq!(mode_id(&parse_vad_mode(Some("low_bitrate"))), 1);
+    }
+
+    #[test]
+    fn parse_vad_mode_falls_back_on_garbage() {
+        assert_eq!(mode_id(&parse_vad_mode(Some("banana"))), 0);
+        assert_eq!(mode_id(&parse_vad_mode(Some("quality!"))), 0);
+        assert_eq!(mode_id(&parse_vad_mode(Some("3"))), 0);
     }
 
     #[test]

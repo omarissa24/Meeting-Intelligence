@@ -32,6 +32,11 @@ cpal = "0.17"
 # bytemuck is used by both platform system sources to cast raw audio
 # byte slices to &[f32] without copying.
 bytemuck = "1"
+# sysinfo gives us cross-platform per-process CPU% + RSS for the
+# `perf://stats` telemetry stream the perf-monitor thread emits during
+# a recording. `system` is the only feature we want — disk/network
+# probes pull a much larger dep graph and we don't use them.
+sysinfo = { version = "0.32", default-features = false, features = ["system"] }
 
 # macOS-only audio capture deps: ScreenCaptureKit for system loopback,
 # objc2/AVFoundation for the mic + screen permission flows.

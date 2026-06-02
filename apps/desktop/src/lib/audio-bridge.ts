@@ -29,8 +29,27 @@ export interface AudioErrorPayload {
   recoverable: boolean;
 }
 
+/**
+ * Per-second process telemetry from the Rust perf-monitor thread.
+ * Mirrors `recording::PerfStatsPayload` (camelCase via serde).
+ *
+ * `cpuPercent` is normalised to a 0..=100 scale on the Rust side
+ * (sysinfo's per-core sum is divided by `available_parallelism`), so
+ * the value is directly comparable to the US-07 ≤8% target.
+ *
+ * Subscribers are typically a debug overlay or a stability harness;
+ * production UI doesn't have to render this.
+ */
+export interface PerfStatsPayload {
+  sessionId: string;
+  cpuPercent: number;
+  rssMb: number;
+  uptimeMs: number;
+}
+
 const EVENT_AUDIO_CHUNK = "audio://chunk";
 const EVENT_AUDIO_ERROR = "audio://error";
+const EVENT_PERF_STATS = "perf://stats";
 
 /**
  * Subscribe to `audio://chunk` events for the duration of a session.
@@ -63,5 +82,21 @@ export async function subscribeAudioErrors(
   return listen<AudioErrorPayload>(EVENT_AUDIO_ERROR, (event) => {
     if (event.payload.sessionId !== sessionId) return;
     onError(event.payload);
+  });
+}
+
+/**
+ * Subscribe to `perf://stats` for the lifetime of a session. Filters
+ * by `sessionId` for symmetry with the chunk/error subscribers — a
+ * stale listener from a prior session doesn't bleed values into the
+ * current one.
+ */
+export async function subscribePerfStats(
+  sessionId: string,
+  onStats: (payload: PerfStatsPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<PerfStatsPayload>(EVENT_PERF_STATS, (event) => {
+    if (event.payload.sessionId !== sessionId) return;
+    onStats(event.payload);
   });
 }

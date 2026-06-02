@@ -31,12 +31,13 @@
 #![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+use sysinfo::{get_current_pid, Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::audio::encoder::EncodedChunk;
@@ -61,6 +62,16 @@ pub const EVENT_AUDIO_CHUNK: &str = "audio://chunk";
 /// Capture-side error event: device disconnected, perms revoked
 /// mid-session, etc. Frontend surfaces these via the existing toast.
 pub const EVENT_AUDIO_ERROR: &str = "audio://error";
+/// Per-second process telemetry: CPU% + RSS for the desktop binary
+/// itself. Lets us validate US-07's ≤8% CPU / ≤200 MB RAM target
+/// observationally during a recording instead of guessing. Subscribers
+/// listen via `audio-bridge.ts::subscribePerfStats`.
+pub const EVENT_PERF_STATS: &str = "perf://stats";
+
+/// Cadence for the perf-monitor thread's sample → emit cycle. 1 s
+/// matches the `LevelMeter` cadence in `pipeline.rs`, fine-grained
+/// enough to catch spikes without flooding the IPC bus.
+const PERF_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +89,21 @@ pub struct AudioErrorPayload {
     pub code: &'static str,
     pub message: String,
     pub recoverable: bool,
+}
+
+/// Per-tick payload for `perf://stats`. Numbers are scaled the way the
+/// UI is going to want to display them — `cpu_percent` is on a 0..=100
+/// scale (sysinfo reports per-core utilisation that can exceed 100 on
+/// multithreaded work; the perf-monitor divides by core count so the
+/// US-07 ≤8% target is directly comparable). `rss_mb` is the resident
+/// set in megabytes.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PerfStatsPayload {
+    pub session_id: String,
+    pub cpu_percent: f32,
+    pub rss_mb: f32,
+    pub uptime_ms: u64,
 }
 
 /// Stats handed back to the Tauri stop command, surfaced to the UI as
@@ -118,6 +144,10 @@ pub struct Session {
     system: Box<dyn SystemSource>,
     pipeline: Option<PipelineHandle>,
     emitter: Option<JoinHandle<u64>>,
+    /// Per-second process telemetry thread. Lives the full session
+    /// lifetime; signal `perf_stop_tx` then `.join()` to tear it down.
+    perf_join: Option<JoinHandle<()>>,
+    perf_stop_tx: Sender<()>,
 }
 
 impl Session {
@@ -168,12 +198,25 @@ impl Session {
             output_dropped,
         );
 
+        // Independent telemetry thread — emits `perf://stats` once per
+        // second so a developer or the future stability harness can
+        // confirm the US-07 CPU/RAM targets without instrumentation
+        // changes mid-recording.
+        let (perf_stop_tx, perf_stop_rx) = mpsc::channel::<()>();
+        let perf_join = spawn_perf_monitor_thread(
+            app.clone(),
+            session_id.clone(),
+            perf_stop_rx,
+        );
+
         Ok(Self {
             session_id,
             mic: Box::new(mic),
             system: Box::new(system),
             pipeline: Some(pipeline),
             emitter: Some(emitter),
+            perf_join: Some(perf_join),
+            perf_stop_tx,
         })
     }
 
@@ -220,6 +263,16 @@ impl Session {
             .and_then(|h| h.join().ok())
             .unwrap_or(0);
 
+        // 4. Perf monitor — independent of the audio path; stop after
+        //    the emitter so the last few stats events still go out.
+        //    Signal then join; the thread wakes from its sleep tick at
+        //    most every 1 s so this can take that long in the worst
+        //    case (acceptable, runs in the stop_recording IPC reply).
+        let _ = self.perf_stop_tx.send(());
+        if let Some(handle) = self.perf_join.take() {
+            let _ = handle.join();
+        }
+
         merge_stats(
             mic_counters,
             system_counters,
@@ -241,6 +294,10 @@ impl Drop for Session {
             let _ = handle.stop();
         }
         if let Some(handle) = self.emitter.take() {
+            let _ = handle.join();
+        }
+        let _ = self.perf_stop_tx.send(());
+        if let Some(handle) = self.perf_join.take() {
             let _ = handle.join();
         }
     }
@@ -301,6 +358,86 @@ fn spawn_emitter_thread<R: Runtime>(
             emitter_dropped
         })
         .expect("failed to spawn audio-emitter thread")
+}
+
+/// Per-session telemetry thread. Refreshes the current process's CPU%
+/// and resident memory once per `PERF_SAMPLE_INTERVAL`, emits a
+/// `perf://stats` Tauri event with the values, and `eprintln!`s the
+/// same values to stderr so they show up in `pnpm tauri:dev`.
+///
+/// The first sample is always 0% CPU — sysinfo's CPU usage is a delta
+/// between two refreshes, so the first refresh has nothing to compare
+/// against. Subsequent ticks land at real values.
+fn spawn_perf_monitor_thread<R: Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    stop_rx: Receiver<()>,
+) -> JoinHandle<()> {
+    std::thread::Builder::new()
+        .name("perf-monitor".into())
+        .spawn(move || {
+            // Resolving the PID can fail in exotic sandboxes; if it does,
+            // log once and exit cleanly — no point keeping a thread
+            // around that can't sample anything.
+            let pid: Pid = match get_current_pid() {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("perf-monitor: get_current_pid failed: {e}; thread exiting");
+                    return;
+                }
+            };
+            let cpu_count = std::thread::available_parallelism()
+                .map(|n| n.get() as f32)
+                .unwrap_or(1.0);
+
+            let mut sys = System::new();
+            let started_at = Instant::now();
+            let pids = [pid];
+
+            // Loop body: wait up to PERF_SAMPLE_INTERVAL on the stop
+            // signal; if it doesn't arrive, sample and emit.
+            loop {
+                match stop_rx.recv_timeout(PERF_SAMPLE_INTERVAL) {
+                    Ok(()) => break,
+                    Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                }
+
+                sys.refresh_processes_specifics(
+                    ProcessesToUpdate::Some(&pids),
+                    false,
+                    ProcessRefreshKind::new().with_cpu().with_memory(),
+                );
+
+                let Some(proc) = sys.process(pid) else {
+                    eprintln!("perf-monitor: process {pid:?} disappeared; exiting");
+                    break;
+                };
+
+                // sysinfo reports CPU usage summed across cores
+                // (e.g. 200% on a fully loaded 2-core process). Divide
+                // by core count so the value is directly comparable to
+                // the US-07 ≤8% target on a 4-core machine.
+                let cpu_percent = proc.cpu_usage() / cpu_count;
+                let rss_mb = proc.memory() as f32 / (1024.0 * 1024.0);
+                let uptime_ms = started_at.elapsed().as_millis() as u64;
+
+                eprintln!(
+                    "perf://stats session_id={session_id} cpu_percent={cpu_percent:.2} rss_mb={rss_mb:.1} uptime_ms={uptime_ms}",
+                );
+
+                let payload = PerfStatsPayload {
+                    session_id: session_id.clone(),
+                    cpu_percent,
+                    rss_mb,
+                    uptime_ms,
+                };
+                if let Err(e) = app.emit(EVENT_PERF_STATS, payload) {
+                    eprintln!("perf-monitor: emit failed: {e}");
+                }
+            }
+        })
+        .expect("failed to spawn perf-monitor thread")
 }
 
 fn maybe_emit_drop_notice<R: Runtime>(
