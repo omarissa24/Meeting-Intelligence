@@ -7,10 +7,24 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-meeting_intelligence}
+      # Read by /docker-entrypoint-initdb.d/10-init-app-user.sh on first
+      # DB init. The backend connects as `app_user` (not `postgres`) so
+      # RLS policies actually apply — `assert_not_bypassing_rls` refuses
+      # to start the backend as a superuser. Override via an `infra/.env`
+      # if you want a non-default password locally.
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:-app_dev_password}
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      # Postgres runs every file under /docker-entrypoint-initdb.d/ once,
+      # in lexical order, when the data directory is empty. Only the
+      # wrapper script lives there — the .sql is kept outside that dir
+      # (mounted at /init-scripts/) so Postgres doesn't ALSO run it
+      # directly, which would fail (the GUC the .sql reads is only set
+      # inside the wrapper's transaction).
+      - ./init-app-user.sh:/docker-entrypoint-initdb.d/10-init-app-user.sh:ro
+      - ./init-app-user.sql:/init-scripts/init-app-user.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
@@ -37,7 +51,10 @@ services:
       - path: ../backend/.env
         required: false
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-meeting_intelligence}
+      # Backend connects as `app_user`, not the postgres superuser:
+      # the lifespan hook `assert_not_bypassing_rls` refuses to start
+      # under a role that would bypass RLS policies.
+      DATABASE_URL: postgresql+psycopg://app_user:${APP_USER_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-meeting_intelligence}
       REDIS_URL: redis://redis:6379/0
       AUTO_MIGRATE: "1"
     ports:

@@ -11,6 +11,7 @@ from meeting_intelligence.api.meetings import router as meetings_router
 from meeting_intelligence.api.transcript import router as transcript_router
 from meeting_intelligence.config import get_settings
 from meeting_intelligence.db.engine import make_engine, make_session_factory
+from meeting_intelligence.db.rls_check import assert_not_bypassing_rls
 
 log = logging.getLogger("meeting_intelligence.main")
 
@@ -30,6 +31,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     if settings.database_url:
         engine = make_engine(settings.database_url)
+        # Hard-block before publishing the engine: if the connection role
+        # would bypass RLS, every subsequent request would silently serve
+        # cross-user data. Disposing the engine on failure keeps the pool
+        # from leaking.
+        try:
+            await assert_not_bypassing_rls(engine)
+        except Exception:
+            await engine.dispose()
+            raise
         app.state.db_engine = engine
         app.state.db_session_factory = make_session_factory(engine)
         log.info("db.engine_attached url_scheme=%s", settings.database_url.split(":", 1)[0])

@@ -41,9 +41,12 @@ docker compose -f infra/docker-compose.yml up -d postgres redis
 # 4. In another terminal — run the FastAPI backend
 cd backend
 uv sync
+cp -n .env.example .env  # default DATABASE_URL connects as `app_user`, not `postgres`
 uv run uvicorn meeting_intelligence.main:app --reload
 # → http://localhost:8000/health
 ```
+
+The backend connects to Postgres as a non-privileged role (`app_user`) so RLS policies actually apply — `assert_not_bypassing_rls` refuses to start under a superuser. See `infra/README.md` → Application role for why and for the existing-volume migration recipe.
 
 ## Per-package scripts
 
