@@ -15,6 +15,20 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-shell = "2"
+# Cross-platform OS credential store wrapper. Picks up Keychain on macOS
+# and the Credential Manager on Windows (FFI under the hood — no file IO,
+# so no fs capability needed). The `apple-native` and `windows-native`
+# features bind directly to the OS API rather than the secret-service
+# fallback, matching FR-2.02's "OS credential store" requirement.
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+# HTTP client for the Phase-2 auth flow (POST /auth/callback, /refresh,
+# /logout). `rustls-tls` keeps us off OpenSSL on macOS so the bundle
+# doesn't need a system OpenSSL pinned.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["sync", "rt", "net", "io-util", "time", "macros"] }
+url = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4", "serde"] }

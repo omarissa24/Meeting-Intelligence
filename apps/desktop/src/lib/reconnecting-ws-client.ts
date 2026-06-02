@@ -5,6 +5,7 @@ import type {
 
 import { AudioRingBuffer } from "./audio-buffer";
 import { nextDelayMs, withJitter } from "./backoff";
+import { authGetAccessToken } from "./tauri-commands";
 import {
   connectTranscriptWs as defaultConnectFn,
   type TranscriptWsClient,
@@ -62,7 +63,19 @@ export interface ReconnectingWsOpts {
   connectFn?: (
     sessionId: string,
     handlers: TranscriptWsHandlers,
+    accessToken: string | null,
   ) => TranscriptWsClient;
+  /**
+   * Resolve the access token to send as the WS subprotocol on each
+   * (re)connect. Defaults to `authGetAccessToken` from tauri-commands,
+   * which transparently refreshes near-expiry tokens. Tests inject a
+   * sync function returning a static value or null.
+   *
+   * Sync returns connect synchronously; Promise returns spawn the WS
+   * after token resolution (microtask). The default Tauri-backed
+   * implementation is always async.
+   */
+  getAccessToken?: () => string | null | Promise<string | null>;
   /** Injection seam for tests — `Date.now()` by default. */
   now?: () => number;
 }
@@ -90,6 +103,7 @@ export function createReconnectingWsClient(
   const budgetMs = opts.maxBudgetMs ?? DEFAULT_BUDGET_MS;
   const maxBuffered = opts.maxBufferedChunks ?? DEFAULT_MAX_BUFFERED;
   const connectFn = opts.connectFn ?? defaultConnectFn;
+  const getAccessToken = opts.getAccessToken ?? authGetAccessToken;
   const now = opts.now ?? (() => Date.now());
 
   const buffer = new AudioRingBuffer<ClientWsMessage>(maxBuffered);
@@ -245,7 +259,30 @@ export function createReconnectingWsClient(
       onParseError: (raw, err) => handlers.onParseError?.(raw, err),
     };
 
-    underlying = connectFn(sessionId, wsHandlers);
+    // Resolve the access token then open. If token resolution fails or
+    // returns null, still attempt to connect (the backend's dual-mode
+    // path may accept anonymous; in production-with-DB it'll close
+    // 1008 and the reconnect loop handles the failure normally).
+    //
+    // We accept either a sync return (used by tests) or a Promise (the
+    // default Tauri-backed token fetch). Sync returns keep the unit
+    // tests' before/after-open assertions in lockstep with `openOnce`.
+    let resolved: string | null | Promise<string | null>;
+    try {
+      resolved = getAccessToken();
+    } catch {
+      resolved = null;
+    }
+    if (resolved && typeof (resolved as Promise<unknown>).then === "function") {
+      void (resolved as Promise<string | null>)
+        .catch(() => null)
+        .then((token) => {
+          if (userClosed) return;
+          underlying = connectFn(sessionId, wsHandlers, token);
+        });
+    } else {
+      underlying = connectFn(sessionId, wsHandlers, resolved as string | null);
+    }
   };
 
   // Public API ---------------------------------------------------------

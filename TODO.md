@@ -93,12 +93,12 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 ### User Stories
 
 - [ ] **US-08 — Create an account and log in**
-  - [ ] Login/sign-up screen shown on first launch before any recording is accessible
-  - [ ] Registration via email + password sends a verification email
-  - [ ] Login with email + password; wrong credentials show a clear error
-  - [ ] JWT tokens stored in OS credential store (Keychain / Credential Manager), never plain files
-  - [ ] Sessions persist across app restarts without re-login
-  - [ ] Log Out option available in settings
+  - [x] Login/sign-up screen shown on first launch before any recording is accessible — `apps/desktop/src/App.tsx` gates `<AppShell/>` behind `auth-store.status === "authenticated"`; `<LoginView/>` is the entry point otherwise.
+  - [x] Registration via email + password sends a verification email — handled inside the WorkOS AuthKit hosted flow opened by `auth_start_login`. We don't render the form ourselves; AuthKit does.
+  - [x] Login with email + password; wrong credentials show a clear error — same hosted flow; AuthKit shows the inline error and only redirects on success. Our deep-link callback only fires on a valid `code`.
+  - [x] JWT tokens stored in OS credential store (Keychain / Credential Manager), never plain files — `apps/desktop/src-tauri/src/auth/storage.rs` via the `keyring` crate (Keychain on macOS, Credential Manager on Windows).
+  - [x] Sessions persist across app restarts without re-login — `auth_get_session` reads the keyring on mount; `App.tsx` calls `hydrate()` from the auth store.
+  - [x] Log Out option available in settings — `apps/desktop/src/components/settings-sheet.tsx` Log out row clears keyring + opens AuthKit logout URL.
 - [ ] **US-09 — View my meeting history**
   - [ ] History view lists all meetings for logged-in user, newest first
   - [ ] Each entry shows title (auto-generated if blank), date, duration, participant count
@@ -130,8 +130,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 
 ### Functional Requirements
 
-- [x] **FR-2.01 (Must)** Registration + login via WorkOS (email/password and Google OAuth minimum) — backend side: AuthKit hosted flow via `GET /auth/authorize`, `GET /auth/callback`, `POST /auth/refresh`, `POST /auth/logout` (`backend/src/meeting_intelligence/api/auth.py`); JWTs verified against WorkOS JWKS in `WorkOSAuthProvider`. Desktop login UI (US-08) is the next iteration.
-- [ ] **FR-2.02 (Must)** JWT access tokens in OS credential store; refresh tokens rotated on each use — desktop-side; ships with US-08.
+- [x] **FR-2.01 (Must)** Registration + login via WorkOS (email/password and Google OAuth minimum) — backend AuthKit endpoints + desktop `<LoginView/>` + deep-link callback (`meeting-intelligence://auth/callback`) closing the loop; JWTs verified against WorkOS JWKS in `WorkOSAuthProvider`.
+- [x] **FR-2.02 (Must)** JWT access tokens in OS credential store; refresh tokens rotated on each use — `keyring`-backed storage in `apps/desktop/src-tauri/src/auth/storage.rs`; `auth_get_access_token` proactively refreshes within 60s of `exp` and re-stores any rotated refresh token from `/auth/refresh`.
 - [x] **FR-2.03 (Must)** All API endpoints protected by JWT auth middleware — `get_current_user` + `get_request_session` enforce bearer auth on every meetings route; tests under `tests/test_meetings_routes.py` cover the 401 path. WS routes also gate via `Sec-WebSocket-Protocol: bearer.<jwt>` when the DB factory is attached.
 - [x] **FR-2.04 (Must)** Each transcript line persisted to `transcript_segments` in real time — `_persist_final_segment` writes per-final under RLS; covered by `tests/test_transcript_ws_persistence.py::test_ws_persists_finals_and_stamps_meeting`.
 - [x] **FR-2.05 (Must)** `meetings` table stores: id, user_id, title, status, started_at, ended_at, duration_seconds, speaker_count — schema landed in `0001_phase2_foundation`; writes wired through `POST /meetings` (creates row, status='recording') and `_stamp_meeting_completed` (sets ended_at/duration_seconds/speaker_count/status='completed' on WS close).

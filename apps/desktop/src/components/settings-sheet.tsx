@@ -1,4 +1,4 @@
-import { Settings } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +11,16 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { BACKEND_HTTP_URL, CLIENT_VERSION } from "@/lib/config";
+import { useAuthStore } from "@/stores/auth-store";
 
 export function SettingsSheet() {
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+
+  // The user blob is opaque WorkOS JSON. `email` is the field we
+  // surface; everything else is a no-op for the settings panel today.
+  const email = typeof user?.email === "string" ? (user.email as string) : null;
+
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -28,6 +36,15 @@ export function SettingsSheet() {
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4 pb-6">
+          {email ? (
+            <section className="flex flex-col gap-2">
+              <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                Signed in as
+              </h3>
+              <p className="text-sm text-foreground break-all">{email}</p>
+            </section>
+          ) : null}
+
           <section className="flex flex-col gap-2">
             <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
               Backend
@@ -50,7 +67,18 @@ export function SettingsSheet() {
             <Switch aria-label="Use local STT" disabled />
           </section>
 
-          <section className="mt-auto flex flex-col gap-1 pt-4">
+          <section className="mt-auto flex flex-col gap-2 pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start gap-2"
+              onClick={() => {
+                void logout();
+              }}
+            >
+              <LogOut className="size-4" />
+              Log out
+            </Button>
             <span className="text-xs text-muted-foreground">Client version</span>
             <span className="font-mono text-xs text-foreground">{CLIENT_VERSION}</span>
           </section>

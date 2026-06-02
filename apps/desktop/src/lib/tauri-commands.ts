@@ -73,3 +73,56 @@ export async function checkAudioPermissions(): Promise<PermissionsSnapshot> {
 export async function requestAudioPermissions(): Promise<PermissionsSnapshot> {
   return invoke<PermissionsSnapshot>("request_audio_permissions");
 }
+
+// --- Auth (Phase 2 / US-08) ----------------------------------------------
+
+/**
+ * Free-form WorkOS user dict — pass-through from the backend's
+ * /auth/callback response. Shape varies with WorkOS SDK version, so we
+ * keep it as opaque JSON until the UI needs a specific field.
+ */
+export type AuthUserJson = Record<string, unknown>;
+
+export interface AuthSession {
+  user: AuthUserJson;
+}
+
+/**
+ * Mint a CSRF nonce, persist it Rust-side, and open the system browser
+ * at `BACKEND/auth/authorize?state=<nonce>`. AuthKit redirects back via
+ * the `meeting-intelligence://auth/callback?code=...&state=...` deep
+ * link; the Rust handler validates the nonce, exchanges the code, and
+ * emits `auth://session-changed` once tokens are stored.
+ */
+export async function authStartLogin(): Promise<void> {
+  return invoke<void>("auth_start_login");
+}
+
+/**
+ * Read the cached session out of the OS credential store. Returns
+ * `null` when the user isn't signed in — the React `auth-store` calls
+ * this on hydrate to decide between `<LoginView/>` and `<AppShell/>`.
+ */
+export async function authGetSession(): Promise<AuthSession | null> {
+  return invoke<AuthSession | null>("auth_get_session");
+}
+
+/**
+ * Return the current access token, refreshing transparently if it's
+ * within 60s of expiring. Returns `null` if the user isn't signed in
+ * or the cached refresh token has been rejected. Used by `apiFetch`
+ * before every HTTP call and by the WS bearer subprotocol.
+ */
+export async function authGetAccessToken(): Promise<string | null> {
+  return invoke<string | null>("auth_get_access_token");
+}
+
+/**
+ * Wipe the OS credential store and return the AuthKit logout URL the
+ * frontend should open to end the AuthKit session. Empty string is
+ * returned if the backend was unreachable — the local clear still
+ * counts.
+ */
+export async function authLogout(): Promise<string> {
+  return invoke<string>("auth_logout");
+}

@@ -35,6 +35,7 @@ function makeFakeFactory() {
   const connectFn = (
     sessionId: string,
     handlers: TranscriptWsHandlers,
+    _accessToken: string | null,
   ): TranscriptWsClient => {
     const inst: Inst = {
       sessionId,
@@ -83,7 +84,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     expect(instances).toHaveLength(1);
@@ -102,7 +103,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn(), onReconnected },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     instances[0].triggerOpen();
@@ -141,7 +142,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false, maxBufferedChunks: 30 },
+      { connectFn, getAccessToken: () => null, jitter: false, maxBufferedChunks: 30 },
     );
 
     instances[0].triggerOpen();
@@ -167,7 +168,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false, maxBufferedChunks: 30 },
+      { connectFn, getAccessToken: () => null, jitter: false, maxBufferedChunks: 30 },
     );
 
     instances[0].triggerOpen();
@@ -184,7 +185,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn(), onReconnectFailed },
-      { connectFn, jitter: false, maxBudgetMs: 5 * 60_000 },
+      { connectFn, getAccessToken: () => null, jitter: false, maxBudgetMs: 5 * 60_000 },
     );
 
     instances[0].triggerOpen();
@@ -212,7 +213,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     instances[0].triggerOpen();
@@ -232,7 +233,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
     instances[0].triggerOpen();
     client.close();
@@ -246,7 +247,7 @@ describe("createReconnectingWsClient", () => {
     createReconnectingWsClient(
       "sess",
       { onMessage },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
     instances[0].triggerOpen();
     instances[0].triggerMessage({
@@ -264,7 +265,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
     instances[0].triggerOpen();
     client.close();
@@ -280,7 +281,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
     const unsub = client.subscribe((s) => snaps.push(s));
 
@@ -310,7 +311,7 @@ describe("createReconnectingWsClient", () => {
     createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     instances[0].triggerOpen();
@@ -336,7 +337,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     instances[0].triggerOpen();
@@ -378,7 +379,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn(), onReconnected },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     instances[0].triggerOpen();
@@ -415,7 +416,7 @@ describe("createReconnectingWsClient", () => {
       { onMessage: vi.fn(), onReconnectFailed },
       // Tiny budget so the second scheduling attempt (after the first
       // retry has burned 1 s of wall clock) exhausts it.
-      { connectFn, jitter: false, maxBudgetMs: 1 },
+      { connectFn, getAccessToken: () => null, jitter: false, maxBudgetMs: 1 },
     );
 
     instances[0].triggerOpen();
@@ -443,7 +444,7 @@ describe("createReconnectingWsClient", () => {
     createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn(), onParseError },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
     instances[0].triggerOpen();
     instances[0].triggerParseError("garbage{", new Error("bad json"));
@@ -459,7 +460,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage: vi.fn() },
-      { connectFn, jitter: false, maxBufferedChunks: 30 },
+      { connectFn, getAccessToken: () => null, jitter: false, maxBufferedChunks: 30 },
     );
     client.subscribe((s) => snaps.push(s));
 
@@ -487,7 +488,7 @@ describe("createReconnectingWsClient", () => {
     const client = createReconnectingWsClient(
       "sess",
       { onMessage },
-      { connectFn, jitter: false },
+      { connectFn, getAccessToken: () => null, jitter: false },
     );
 
     instances[0].triggerOpen();

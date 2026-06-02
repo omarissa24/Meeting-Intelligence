@@ -38,5 +38,12 @@
       "minimumSystemVersion": "13.0",
       "entitlements": "Entitlements.plist"
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["meeting-intelligence"]
+      }
+    }
   }
 }

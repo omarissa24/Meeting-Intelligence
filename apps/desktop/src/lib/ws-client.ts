@@ -33,15 +33,28 @@ function mapReadyState(state: number): WsReadyState {
 
 /**
  * Open the /transcript/ws/{sessionId} WebSocket, immediately sending a
- * client_hello on connect. No reconnection logic — FR-1.10 will add
- * exponential backoff in a follow-up slice.
+ * client_hello on connect.
+ *
+ * `accessToken` is sent in the `Sec-WebSocket-Protocol` header as
+ * `bearer.<jwt>` — the FastAPI side at `transcript.py:630-645` parses
+ * that subprotocol and binds the user via the same WorkOS JWT path as
+ * HTTP routes. Pass `null` only when the user isn't signed in (e.g.
+ * legacy callers / tests); the backend in dual-mode will accept the
+ * connection anonymously, but production with the DB factory attached
+ * closes 1008.
  */
 export function connectTranscriptWs(
   sessionId: string,
   handlers: TranscriptWsHandlers,
+  accessToken: string | null = null,
 ): TranscriptWsClient {
   const url = `${BACKEND_WS_URL}/transcript/ws/${encodeURIComponent(sessionId)}`;
-  const ws = new WebSocket(url);
+  // Browsers / Tauri's webview only allow tokens via subprotocol on
+  // WS upgrade — there's no way to set a custom Authorization header.
+  // The backend specifically parses `bearer.<jwt>` for this reason.
+  const ws = accessToken
+    ? new WebSocket(url, [`bearer.${accessToken}`])
+    : new WebSocket(url);
 
   ws.addEventListener("open", () => {
     const hello: ClientWsMessage = {
