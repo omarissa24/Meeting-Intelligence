@@ -106,10 +106,10 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] List loads within 2 s for up to 100 meetings
   - [ ] Empty state shown with helpful prompt when no meetings exist
 - [ ] **US-10 — Meeting transcript saved automatically**
-  - [ ] Each transcript line written to DB in real time as it arrives from STT (not only at meeting end)
-  - [ ] On stop, in-flight lines flushed and persisted before session marked complete
-  - [ ] Full transcript retrievable from DB after app restart
-  - [ ] If app crashes mid-meeting, already-persisted lines retained and visible on next launch
+  - [x] Each transcript line written to DB in real time as it arrives from STT (not only at meeting end) — finals only; interims live in memory. See `_persist_final_segment` in `backend/src/meeting_intelligence/api/transcript.py`.
+  - [x] On stop, in-flight lines flushed and persisted before session marked complete — `_DRAIN_TIMEOUT_S` (2s) gives Deepgram's trailing finals time to land before `_stamp_meeting_completed` runs.
+  - [x] Full transcript retrievable from DB after app restart — `GET /meetings/:id` returns `segments[]` ordered by `start_ms`.
+  - [ ] If app crashes mid-meeting, already-persisted lines retained and visible on next launch — gated on the desktop side (history view; US-09).
 - [ ] **US-11 — Audio recording archived**
   - [ ] At meeting end, raw audio compressed to MP3 (128 kbps) and uploaded to S3 asynchronously
   - [ ] Audio player available in meeting detail view once upload completes
@@ -122,27 +122,27 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] Up to 10 freeform tags can be added/removed
   - [ ] Tags searchable in the history list (full semantic search comes in Phase 4)
 - [ ] **US-13 — Data is private and secure**
-  - [ ] All API endpoints validate JWT and return 401 for unauthenticated requests
-  - [ ] DB queries scoped by user ID; no cross-user data leakage
-  - [ ] All data transmitted over TLS 1.3; HTTP rejected
-  - [ ] S3 objects not publicly accessible; downloads only via pre-signed URLs with 1 h expiry
-  - [ ] Postgres and S3 encrypted at rest (AES-256)
+  - [x] All API endpoints validate JWT and return 401 for unauthenticated requests — every authed route depends on `get_request_session`, which transitively depends on `get_current_user`; `tests/test_meetings_routes.py::test_*_requires_auth` covers the gate.
+  - [x] DB queries scoped by user ID; no cross-user data leakage — RLS policies on `users`/`meetings`/`transcript_segments` keyed off `app.current_user_id`; `set_request_user` binds it per request. Cross-user 404 verified in `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting`.
+  - [ ] All data transmitted over TLS 1.3; HTTP rejected — infra-level concern, gated on the deploy boundary (Fly/ECS load balancer config).
+  - [ ] S3 objects not publicly accessible; downloads only via pre-signed URLs with 1 h expiry — gated on the audio-archive iteration (FR-2.06/2.07).
+  - [ ] Postgres and S3 encrypted at rest (AES-256) — infra-level concern.
 
 ### Functional Requirements
 
-- [ ] **FR-2.01 (Must)** Registration + login via WorkOS (email/password and Google OAuth minimum)
-- [ ] **FR-2.02 (Must)** JWT access tokens in OS credential store; refresh tokens rotated on each use
-- [ ] **FR-2.03 (Must)** All API endpoints protected by JWT auth middleware
-- [ ] **FR-2.04 (Must)** Each transcript line persisted to `transcript_segments` in real time
-- [ ] **FR-2.05 (Must)** `meetings` table stores: id, user_id, title, status, started_at, ended_at, duration_seconds, speaker_count — schema landed in PR A (`alembic/versions/0001_phase2_foundation.py`); writes wired in a follow-up PR alongside the auth work
+- [x] **FR-2.01 (Must)** Registration + login via WorkOS (email/password and Google OAuth minimum) — backend side: AuthKit hosted flow via `GET /auth/authorize`, `GET /auth/callback`, `POST /auth/refresh`, `POST /auth/logout` (`backend/src/meeting_intelligence/api/auth.py`); JWTs verified against WorkOS JWKS in `WorkOSAuthProvider`. Desktop login UI (US-08) is the next iteration.
+- [ ] **FR-2.02 (Must)** JWT access tokens in OS credential store; refresh tokens rotated on each use — desktop-side; ships with US-08.
+- [x] **FR-2.03 (Must)** All API endpoints protected by JWT auth middleware — `get_current_user` + `get_request_session` enforce bearer auth on every meetings route; tests under `tests/test_meetings_routes.py` cover the 401 path. WS routes also gate via `Sec-WebSocket-Protocol: bearer.<jwt>` when the DB factory is attached.
+- [x] **FR-2.04 (Must)** Each transcript line persisted to `transcript_segments` in real time — `_persist_final_segment` writes per-final under RLS; covered by `tests/test_transcript_ws_persistence.py::test_ws_persists_finals_and_stamps_meeting`.
+- [x] **FR-2.05 (Must)** `meetings` table stores: id, user_id, title, status, started_at, ended_at, duration_seconds, speaker_count — schema landed in `0001_phase2_foundation`; writes wired through `POST /meetings` (creates row, status='recording') and `_stamp_meeting_completed` (sets ended_at/duration_seconds/speaker_count/status='completed' on WS close).
 - [ ] **FR-2.06 (Must)** On meeting completion, Celery task compresses + uploads raw audio to S3
 - [ ] **FR-2.07 (Must)** S3 objects accessible only via pre-signed URLs, max 1 h expiry
-- [ ] **FR-2.08 (Must)** `GET /meetings` returns paginated history for authenticated user
-- [ ] **FR-2.09 (Must)** `GET /meetings/:id` returns metadata + all transcript segments
-- [ ] **FR-2.10 (Must)** `PATCH /meetings/:id` updates title and tags
+- [x] **FR-2.08 (Must)** `GET /meetings` returns paginated history for authenticated user — cursor-based, default `limit=25`, max 100; covered by `tests/test_meetings_routes.py::test_list_meetings_paginates_newest_first`.
+- [x] **FR-2.09 (Must)** `GET /meetings/:id` returns metadata + all transcript segments — finals only, ordered by `start_ms`; covered by `tests/test_meetings_routes.py::test_get_meeting_returns_segments_only_finals` and the persistence E2E test.
+- [x] **FR-2.10 (Must)** `PATCH /meetings/:id` updates title and tags — tag count + length validation in `_validate_tags`; `meetings.tags` column added in migration 0002.
 - [ ] **FR-2.11 (Should)** `DELETE /meetings/:id/audio` removes S3 audio without deleting transcript
-- [ ] **FR-2.12 (Must)** All DB queries scoped by user_id; Row Level Security enabled on all tables — RLS policies (USING + WITH CHECK) on `users`, `meetings`, `transcript_segments` and FORCEd on the table owner; verified by `tests/test_rls_blocks_cross_user.py`. Ticks fully once routes wire `set_request_user` into the request lifecycle (PR B/C).
-- [ ] **FR-2.13 (Must)** All data over TLS 1.3; server rejects non-TLS connections
+- [x] **FR-2.12 (Must)** All DB queries scoped by user_id; Row Level Security enabled on all tables — every authenticated route uses `get_request_session`, which calls `set_request_user(session, user.id)` before yielding. Cross-user 404 verified by `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting` and the WS-side `test_ws_rejects_meeting_owned_by_another_user`.
+- [ ] **FR-2.13 (Must)** All data over TLS 1.3; server rejects non-TLS connections — infra-level concern (deploy load balancer config); not a backend code change.
 - [ ] **FR-2.14 (Must)** Redis is the Celery broker for all background tasks
 - [x] **FR-2.15 (Must)** Alembic manages all schema changes in version control
 

@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     )
 
     # Service
-    environment: str = "development"
+    # `environment` gates dev-only surfaces (e.g. POST /auth/dev-token).
+    # Anything not "production" exposes them; "production" hard-404s.
+    environment: Literal["development", "staging", "production"] = "development"
     cors_allow_origins: list[str] = ["http://localhost:1420"]
     # Root logger level. Set to DEBUG to enable per-chunk and per-event
     # transcript logging during E2E debugging; INFO is the right default
@@ -48,6 +50,20 @@ class Settings(BaseSettings):
     # Auth
     workos_api_key: str | None = None
     workos_client_id: str | None = None
+    # Override only if WorkOS docs say to; otherwise we derive from client_id.
+    workos_jwks_url: str | None = None
+    # Where AuthKit redirects after login. For desktop builds this will be a
+    # 127.0.0.1 loopback the Tauri shell intercepts; for backend-only smoke
+    # tests it can stay as the FastAPI /auth/callback URL.
+    workos_redirect_uri: str | None = None
+    # WorkOS access tokens carry `iss = https://api.workos.com`. Override per
+    # environment if WorkOS rotates issuers.
+    workos_jwt_issuer: str = "https://api.workos.com"
+
+    # Dev-token signing key — used ONLY by /auth/dev-token in non-prod
+    # environments to mint test JWTs that the same JWKS-aware verifier accepts
+    # under a separate kid. Production envs leave this unset.
+    dev_jwt_signing_key: str | None = None
 
 
 _settings: Settings | None = None

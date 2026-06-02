@@ -11,7 +11,9 @@ from functools import lru_cache
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from meeting_intelligence.auth.workos_provider import WorkOSAuthProvider
 from meeting_intelligence.config import get_settings
+from meeting_intelligence.interfaces.auth import AuthProvider
 from meeting_intelligence.interfaces.stt import STTProvider
 from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
 from meeting_intelligence.stt.in_memory_echo import InMemoryEchoSTT
@@ -36,6 +38,19 @@ def _build_provider() -> STTProvider:
 
 def get_stt_provider() -> STTProvider:
     return _build_provider()
+
+
+# --- Auth provider --------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _build_auth_provider() -> AuthProvider:
+    """One verifier per process; tests clear the cache or override the dep."""
+    return WorkOSAuthProvider(get_settings())
+
+
+def get_auth_provider() -> AuthProvider:
+    return _build_auth_provider()
 
 
 # --- Database wiring ---

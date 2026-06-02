@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, func, text
+from sqlalchemy import ARRAY, DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,6 +23,11 @@ class Meeting(Base):
         index=True,
     )
     title: Mapped[str | None] = mapped_column(String, nullable=True)
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        server_default=text("'{}'::text[]"),
+    )
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
