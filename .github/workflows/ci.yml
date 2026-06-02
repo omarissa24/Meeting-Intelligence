@@ -56,8 +56,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -76,7 +74,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        # macOS pinned to macos-13: the latest GH images ship an SDK
+        # newer than what `apple-metal-0.8.7` (transitive via
+        # `screencapturekit`) compiles against — its swift-bridge code
+        # references symbols (e.g. MTLSamplerReductionMode) that have
+        # moved in newer Xcode. Bump back to `macos-latest` once a
+        # newer apple-metal release lands or screencapturekit drops
+        # the dep.
+        os: [macos-13, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:

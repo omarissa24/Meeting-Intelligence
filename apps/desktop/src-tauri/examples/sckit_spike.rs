@@ -37,7 +37,22 @@
 //! Once green, the production module reuses this exact pattern — see
 //! `audio/macos/system.rs` in the implementation plan.
 
-#![cfg(target_os = "macos")]
+// macOS-only example. On other platforms, expose a stub `main` so
+// `cargo test --workspace` (which builds examples as binaries) succeeds
+// — non-macOS runners have no ScreenCaptureKit to hook into anyway.
+
+#[cfg(not(target_os = "macos"))]
+fn main() {
+    eprintln!("sckit_spike is a macOS-only example");
+}
+
+#[cfg(target_os = "macos")]
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    macos_impl::run()
+}
+
+#[cfg(target_os = "macos")]
+mod macos_impl {
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -161,7 +176,7 @@ impl SCStreamOutputTrait for AudioHandler {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub(super) fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("🔊 ScreenCaptureKit audio extraction spike");
     println!("    target sample rate: 16000 Hz mono");
     println!("    duration: 5 s — play some audio on this Mac now\n");
@@ -256,3 +271,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     Ok(())
 }
+
+} // mod macos_impl
