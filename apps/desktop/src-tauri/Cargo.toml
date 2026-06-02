@@ -21,19 +21,22 @@ uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 
-# Cross-platform audio bits live here. cpal is fine on Linux/Windows too;
-# we just don't compile a non-macOS source until WASAPI lands.
+# Cross-platform audio bits. cpal is the cross-platform mic capture
+# library — it sits on CoreAudio on macOS and WASAPI on Windows, so we
+# share a single CpalMicSource between platforms.
 rubato = "3"
 audioadapter-buffers = "3"
 webrtc-vad = "0.4"
 base64 = "0.22"
+cpal = "0.17"
+# bytemuck is used by both platform system sources to cast raw audio
+# byte slices to &[f32] without copying.
+bytemuck = "1"
 
-# Audio capture — macOS-only for now. Behind cfg(target_os) so the desktop
-# crate still builds on Linux for `cargo check` in CI.
+# macOS-only audio capture deps: ScreenCaptureKit for system loopback,
+# objc2/AVFoundation for the mic + screen permission flows.
 [target.'cfg(target_os = "macos")'.dependencies]
 screencapturekit = { version = "6", features = ["macos_13_0"] }
-bytemuck = "1"
-cpal = "0.17"
 # Permission checks: AVCaptureDevice.authorizationStatusForMediaType /
 # requestAccessForMediaType. block2 is needed for the request's
 # completion-handler block. Foundation supplies NSString and the runtime.
@@ -44,6 +47,20 @@ objc2-av-foundation = { version = "0.3", features = [
     "AVMediaFormat",
 ] }
 block2 = "0.6"
+
+# Windows-only audio capture deps. cpal handles the mic via WASAPI; the
+# `wasapi` crate is a thin wrapper around the Win32 audio API that lets
+# us configure loopback capture (cpal does not expose AUDCLNT_STREAMFLAGS_LOOPBACK).
+# The `windows` crate gives us the COM init the WASAPI thread needs.
+[target.'cfg(target_os = "windows")'.dependencies]
+wasapi = "0.23"
+# `windows` is brought in transitively by wasapi, but we depend on it
+# directly so the COM HRESULT helpers are in scope where we need them.
+windows = { version = "0.58", features = [
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_Foundation",
+] }
 
 [[example]]
 name = "sckit_spike"

@@ -1,6 +1,6 @@
 mod audio;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod recording;
 
 use std::sync::Mutex;
@@ -13,7 +13,10 @@ use uuid::Uuid;
 
 #[cfg(target_os = "macos")]
 use crate::audio::macos::permissions::{self, PermissionsSnapshot};
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "windows")]
+use crate::audio::windows::permissions::{self, PermissionsSnapshot};
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use crate::recording::{Session, SessionStats};
 
 #[derive(Default)]
@@ -21,10 +24,10 @@ struct RecordingState {
     current_session_id: Option<String>,
     started_at: Option<DateTime<Utc>>,
     /// The live recording session — owns the audio capture sources,
-    /// pipeline, and emitter thread. `None` when idle. Only present
-    /// on macOS for now; Windows lands behind the same trait surface
-    /// in a later slice.
-    #[cfg(target_os = "macos")]
+    /// pipeline, and emitter thread. `None` when idle. Present on
+    /// macOS (ScreenCaptureKit) and Windows (WASAPI loopback); absent
+    /// on Linux until a Linux source lands.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     session: Option<Session>,
 }
 
@@ -43,7 +46,7 @@ struct StopRecordingResult {
     duration_ms: u64,
     /// Capture-side stats. `None` on platforms where native audio
     /// capture isn't wired up yet.
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     stats: Option<SessionStats>,
 }
 
@@ -93,11 +96,11 @@ async fn start_recording<R: Runtime>(
     let session_id = Uuid::new_v4().to_string();
     let started_at = Utc::now();
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let session = Session::start(&app, session_id.clone())
         .map_err(|e| CommandError::Audio(e.to_string()))?;
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         // Keep `app` referenced so the unused-variable lint stays
         // quiet when we cross-compile for Linux CI.
@@ -105,7 +108,7 @@ async fn start_recording<R: Runtime>(
         return Err(CommandError::UnsupportedPlatform);
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         let mut guard = state
             .lock()
@@ -145,14 +148,14 @@ async fn stop_recording(
             .take()
             .ok_or(CommandError::NotRecording)?;
         let started_at = guard.started_at.take().ok_or(CommandError::NotRecording)?;
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let session = guard.session.take();
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let session: Option<()> = None;
         (session_id, started_at, session)
     };
 
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     let stats = _session_opt.map(|s| s.stop());
 
     let ended_at = Utc::now();
@@ -165,37 +168,41 @@ async fn stop_recording(
         session_id,
         ended_at: ended_at.to_rfc3339(),
         duration_ms,
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         stats,
     })
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[tauri::command]
 async fn check_audio_permissions() -> Result<PermissionsSnapshot, CommandError> {
-    // Cheap synchronous reads — no need for spawn_blocking.
+    // Cheap synchronous reads — no need for spawn_blocking. (Windows
+    // returns Granted unconditionally; macOS hits AVCaptureDevice +
+    // SCShareableContent.)
     permissions::check_all().map_err(|e| CommandError::Permissions(e.to_string()))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 async fn check_audio_permissions() -> Result<(), CommandError> {
     Err(CommandError::UnsupportedPlatform)
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[tauri::command]
 async fn request_audio_permissions() -> Result<PermissionsSnapshot, CommandError> {
-    // request_all blocks the calling thread on the AV completion
-    // handler and the SC poll loop, so route it through
-    // spawn_blocking to keep the IPC reactor unblocked.
+    // On macOS, request_all blocks the calling thread on the AV
+    // completion handler and the SC poll loop, so route through
+    // spawn_blocking to keep the IPC reactor unblocked. On Windows
+    // it's a no-op but going through spawn_blocking keeps the call
+    // shape uniform.
     tauri::async_runtime::spawn_blocking(permissions::request_all)
         .await
         .map_err(|e| CommandError::Permissions(format!("join: {e}")))?
         .map_err(|e| CommandError::Permissions(e.to_string()))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 async fn request_audio_permissions() -> Result<(), CommandError> {
     Err(CommandError::UnsupportedPlatform)

@@ -33,8 +33,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **US-04 — Use the app on macOS and Windows**
   - [ ] CI produces a signed macOS `.dmg`
   - [ ] CI produces a signed Windows `.msi`
-  - [ ] Audio capture works on macOS 13 Ventura+ via ScreenCaptureKit
-  - [ ] Audio capture works on Windows 10+ via WASAPI loopback
+  - [x] Audio capture works on macOS 13 Ventura+ via ScreenCaptureKit
+  - [ ] Audio capture works on Windows 10+ via WASAPI loopback — code-complete (see `apps/desktop/src-tauri/src/audio/windows/system.rs`); awaiting real-hardware UAT before ticking
   - [ ] No additional drivers or software required after install
 - [ ] **US-05 — Automatic silence filtering**
   - [x] VAD runs locally on every 20 ms frame before transmission
@@ -66,7 +66,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-1.09 (Should)** Interim results visually distinguished from final results
 - [x] **FR-1.10 (Must)** WebSocket implements exponential backoff reconnection, max retry 5 minutes
 - [x] **FR-1.11 (Should)** Up to 30 s of audio buffered locally during disconnection and replayed
-- [ ] **FR-1.12 (Must)** macOS uses ScreenCaptureKit; Windows uses WASAPI loopback
+- [ ] **FR-1.12 (Must)** macOS uses ScreenCaptureKit; Windows uses WASAPI loopback — macOS half landed; Windows side code-complete via `WasapiSystemSource`, ticked once verified on a real Windows machine
 - [ ] **FR-1.13 (Must)** Binary signed for macOS (Developer ID) and Windows (Authenticode)
 - [x] **FR-1.14 (Must)** Audio capture runs on dedicated thread, does not block UI render loop
 - [x] **FR-1.15 (Must)** App requests mic + screen recording permissions on first launch, handles denial gracefully

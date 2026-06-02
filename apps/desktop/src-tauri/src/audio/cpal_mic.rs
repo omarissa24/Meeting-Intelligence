@@ -1,11 +1,13 @@
-//! cpal-backed `MicSource` — opens the default input device on macOS via
-//! CoreAudio and pushes `AudioFrame`s to the worker.
+//! cpal-backed `MicSource` — opens the default input device and pushes
+//! `AudioFrame`s to the worker. cpal abstracts CoreAudio on macOS and
+//! WASAPI on Windows; both surface a `Send`-able `Stream` handle, so the
+//! same implementation works on both platforms.
 //!
-//! cpal's data callback runs on a dedicated CoreAudio thread (per
+//! cpal's data callback runs on a dedicated audio thread (per
 //! `host/coreaudio/macos/mod.rs:112` — "the dedicated thread architecture
-//! ensures `Stream` can implement `Send`"), so we can store the `Stream`
-//! handle directly behind a Mutex and call `pause()` from the command
-//! thread on stop.
+//! ensures `Stream` can implement `Send`"; the WASAPI host is structured
+//! the same way), so we can store the `Stream` handle directly behind a
+//! Mutex and call `pause()` from the command thread on stop.
 //!
 //! We pick the device's first supported input config and request its max
 //! sample rate — the resampler downstream handles whatever rate cpal

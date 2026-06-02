@@ -20,6 +20,7 @@
 // slices without re-adding files.
 #![allow(dead_code)]
 
+pub mod cpal_mic;
 pub mod encoder;
 pub mod mixer;
 pub mod pipeline;
@@ -29,3 +30,6 @@ pub mod vad;
 
 #[cfg(target_os = "macos")]
 pub mod macos;
+
+#[cfg(target_os = "windows")]
+pub mod windows;

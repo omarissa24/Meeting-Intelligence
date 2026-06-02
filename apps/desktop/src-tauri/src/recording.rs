@@ -18,11 +18,12 @@
 //!         ↓ emitter thread sees disconnect, exits
 //!         ↓ join everything; return SessionStats
 //!
-//! Only macOS for this slice. The Windows source impls plug in behind
-//! the same trait surface in a later slice; this file gains a
-//! `cfg(target_os = "windows")` branch when WASAPI lands.
+//! Compiled on macOS and Windows. The mic source is shared (cpal handles
+//! both platforms); only the system-audio source differs:
+//!   * macOS → `audio::macos::system::SCKitSystemSource` (ScreenCaptureKit)
+//!   * Windows → `audio::windows::system::WasapiSystemSource` (WASAPI loopback)
 
-#![cfg(target_os = "macos")]
+#![cfg(any(target_os = "macos", target_os = "windows"))]
 // Audio-error event surface, session-id accessor, and the
 // AlreadyRunning variant are intentionally public for the next
 // slice (UI toast wiring + race-detection), even though they
@@ -39,9 +40,14 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::audio::encoder::EncodedChunk;
-use crate::audio::macos::{mic::CpalMicSource, system::SCKitSystemSource};
+use crate::audio::cpal_mic::CpalMicSource;
 use crate::audio::pipeline::{self, PipelineHandle, PipelineStats};
 use crate::audio::traits::{MicSource, SourceCounters, SourceError, SystemSource};
+
+#[cfg(target_os = "macos")]
+use crate::audio::macos::system::SCKitSystemSource;
+#[cfg(target_os = "windows")]
+use crate::audio::windows::system::WasapiSystemSource;
 
 /// Minimum gap between emitted `audio://error AUDIO_DROP` events. A
 /// sustained drop condition still surfaces immediately on the first
@@ -126,7 +132,10 @@ impl Session {
         session_id: String,
     ) -> Result<Self, SessionError> {
         let mut mic = CpalMicSource::new();
+        #[cfg(target_os = "macos")]
         let mut system = SCKitSystemSource::new();
+        #[cfg(target_os = "windows")]
+        let mut system = WasapiSystemSource::new();
 
         let mut pipeline = pipeline::spawn();
         let audio_sink = pipeline.audio_sink();

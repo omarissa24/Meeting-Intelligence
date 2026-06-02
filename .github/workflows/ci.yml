@@ -54,3 +54,26 @@ jobs:
         run: pnpm --filter @meeting-intelligence/desktop typecheck
       - name: Web build (Vite only — Tauri bundle runs in desktop-release.yml)
         run: pnpm --filter @meeting-intelligence/desktop build
+
+  desktop-rust:
+    name: Desktop Rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cargo cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+      - name: cargo check
+        run: cargo check --locked
+      - name: cargo test
+        run: cargo test --locked --no-fail-fast
