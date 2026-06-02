@@ -39,6 +39,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-meeting_intelligence}
       REDIS_URL: redis://redis:6379/0
+      AUTO_MIGRATE: "1"
     ports:
       - "8000:8000"
     depends_on:

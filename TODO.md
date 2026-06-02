@@ -134,17 +134,17 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **FR-2.02 (Must)** JWT access tokens in OS credential store; refresh tokens rotated on each use
 - [ ] **FR-2.03 (Must)** All API endpoints protected by JWT auth middleware
 - [ ] **FR-2.04 (Must)** Each transcript line persisted to `transcript_segments` in real time
-- [ ] **FR-2.05 (Must)** `meetings` table stores: id, user_id, title, status, started_at, ended_at, duration_seconds, speaker_count
+- [ ] **FR-2.05 (Must)** `meetings` table stores: id, user_id, title, status, started_at, ended_at, duration_seconds, speaker_count — schema landed in PR A (`alembic/versions/0001_phase2_foundation.py`); writes wired in a follow-up PR alongside the auth work
 - [ ] **FR-2.06 (Must)** On meeting completion, Celery task compresses + uploads raw audio to S3
 - [ ] **FR-2.07 (Must)** S3 objects accessible only via pre-signed URLs, max 1 h expiry
 - [ ] **FR-2.08 (Must)** `GET /meetings` returns paginated history for authenticated user
 - [ ] **FR-2.09 (Must)** `GET /meetings/:id` returns metadata + all transcript segments
 - [ ] **FR-2.10 (Must)** `PATCH /meetings/:id` updates title and tags
 - [ ] **FR-2.11 (Should)** `DELETE /meetings/:id/audio` removes S3 audio without deleting transcript
-- [ ] **FR-2.12 (Must)** All DB queries scoped by user_id; Row Level Security enabled on all tables
+- [ ] **FR-2.12 (Must)** All DB queries scoped by user_id; Row Level Security enabled on all tables — RLS policies (USING + WITH CHECK) on `users`, `meetings`, `transcript_segments` and FORCEd on the table owner; verified by `tests/test_rls_blocks_cross_user.py`. Ticks fully once routes wire `set_request_user` into the request lifecycle (PR B/C).
 - [ ] **FR-2.13 (Must)** All data over TLS 1.3; server rejects non-TLS connections
 - [ ] **FR-2.14 (Must)** Redis is the Celery broker for all background tasks
-- [ ] **FR-2.15 (Must)** Alembic manages all schema changes in version control
+- [x] **FR-2.15 (Must)** Alembic manages all schema changes in version control
 
 ### Definition of Done — Phase 2 Exit Criteria
 

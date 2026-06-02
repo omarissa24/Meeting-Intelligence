@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +8,39 @@ from fastapi.middleware.cors import CORSMiddleware
 from meeting_intelligence.api.health import router as health_router
 from meeting_intelligence.api.transcript import router as transcript_router
 from meeting_intelligence.config import get_settings
+from meeting_intelligence.db.engine import make_engine, make_session_factory
+
+log = logging.getLogger("meeting_intelligence.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Build the DB engine when configured, dispose on shutdown.
+
+    With `DATABASE_URL` unset, `app.state.db_engine` and
+    `db_session_factory` stay `None`. This is what keeps the existing
+    test suite (none of which sets `DATABASE_URL`) green: routes that
+    don't pull a DB session never trip over a missing engine.
+    """
+    settings = get_settings()
+    app.state.db_engine = None
+    app.state.db_session_factory = None
+
+    if settings.database_url:
+        engine = make_engine(settings.database_url)
+        app.state.db_engine = engine
+        app.state.db_session_factory = make_session_factory(engine)
+        log.info("db.engine_attached url_scheme=%s", settings.database_url.split(":", 1)[0])
+    else:
+        log.info("db.engine_skipped reason=database_url_unset")
+
+    try:
+        yield
+    finally:
+        engine = app.state.db_engine
+        if engine is not None:
+            await engine.dispose()
+            log.info("db.engine_disposed")
 
 
 def create_app() -> FastAPI:
@@ -20,6 +55,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Meeting Intelligence",
         version="0.0.0",
+        lifespan=lifespan,
     )
     app.add_middleware(
         CORSMiddleware,

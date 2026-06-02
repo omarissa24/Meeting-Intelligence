@@ -8,6 +8,9 @@ Centralises the wiring between routes and the abstract interfaces in
 
 from functools import lru_cache
 
+from fastapi import Request
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+
 from meeting_intelligence.config import get_settings
 from meeting_intelligence.interfaces.stt import STTProvider
 from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
@@ -33,3 +36,37 @@ def _build_provider() -> STTProvider:
 
 def get_stt_provider() -> STTProvider:
     return _build_provider()
+
+
+# --- Database wiring ---
+#
+# The engine lives on `app.state` so its lifetime tracks the FastAPI
+# lifespan rather than process startup. Resist the temptation to
+# `lru_cache` — engines hold connection pools that won't survive
+# `pytest-postgresql`'s per-test database, and lifespan-scoped state
+# is the unambiguous contract for shutdown.
+
+
+def get_db_engine(request: Request) -> AsyncEngine:
+    """Return the request's `AsyncEngine`.
+
+    Raises if the engine is unavailable (e.g. `DATABASE_URL` not set
+    in the running process). Routes that depend on this should be
+    deployed only when the DB is configured.
+    """
+    engine: AsyncEngine | None = getattr(request.app.state, "db_engine", None)
+    if engine is None:
+        raise RuntimeError("DB not configured: DATABASE_URL is unset")
+    return engine
+
+
+def get_session_factory(
+    request: Request,
+) -> async_sessionmaker[AsyncSession]:
+    """Return the request's session factory built off the lifespan engine."""
+    factory: async_sessionmaker[AsyncSession] | None = getattr(
+        request.app.state, "db_session_factory", None
+    )
+    if factory is None:
+        raise RuntimeError("DB not configured: DATABASE_URL is unset")
+    return factory

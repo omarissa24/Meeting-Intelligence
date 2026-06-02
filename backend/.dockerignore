@@ -8,6 +8,5 @@ __pycache__/
 .env.*
 !.env.example
 tests/
-README.md
 Dockerfile
 .dockerignore
