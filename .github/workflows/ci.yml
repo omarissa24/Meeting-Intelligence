@@ -74,14 +74,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS pinned to macos-13: the latest GH images ship an SDK
-        # newer than what `apple-metal-0.8.7` (transitive via
-        # `screencapturekit`) compiles against — its swift-bridge code
-        # references symbols (e.g. MTLSamplerReductionMode) that have
-        # moved in newer Xcode. Bump back to `macos-latest` once a
-        # newer apple-metal release lands or screencapturekit drops
-        # the dep.
-        os: [macos-13, windows-latest]
+        # macOS pinned to macos-15-intel because apple-metal-0.8.7
+        # (transitive via screencapturekit) doesn't compile against
+        # the SDK on macos-latest. Tracked in #1; flip back to
+        # macos-latest once that's resolved upstream.
+        os: [macos-15-intel, windows-latest]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
