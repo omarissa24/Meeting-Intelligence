@@ -3,6 +3,7 @@ import { ArrowLeft, Users, X } from "lucide-react";
 import type { TranscriptSegment } from "@meeting-intelligence/shared-types";
 
 import { MeetingAudioPlayer, type AudioState } from "@/components/meeting-audio-player";
+import { MeetingSummary } from "@/components/meeting-summary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMeetingDetail } from "@/hooks/use-meeting-detail";
+import { usePatchActionItem } from "@/hooks/use-patch-action-item";
+import { useSummariseMeeting } from "@/hooks/use-summarise-meeting";
 import { useUpdateMeeting } from "@/hooks/use-update-meeting";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatDuration } from "@/lib/format-duration";
@@ -121,10 +124,16 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
                 : "pending";
 
   const isPendingEncode = audioState === "pending";
+  // Phase 3: poll while the LangGraph pipeline is still working too.
+  // The same 5s/120s budget covers both — summary completion and
+  // audio archive ride the same useMeetingDetail query.
+  const isPendingSummary =
+    m?.summaryStatus === "pending" || m?.summaryStatus === "processing";
+  const shouldPoll = isPendingEncode || isPendingSummary;
 
   useEffect(() => {
-    setPollEnabled(isPendingEncode);
-  }, [isPendingEncode]);
+    setPollEnabled(shouldPoll);
+  }, [shouldPoll]);
 
   // Reset the encode-pending tracking when navigating between meetings.
   useEffect(() => {
@@ -159,6 +168,8 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
   }, [isPendingEncode, meetingId]);
 
   const update = useUpdateMeeting(meetingId);
+  const summarise = useSummariseMeeting(meetingId);
+  const patchActionItem = usePatchActionItem(meetingId);
 
   const headerMeta = useMemo(() => {
     if (!query.data) return null;
@@ -232,6 +243,21 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
 
       {query.data ? (
         <MeetingAudioPlayer meeting={query.data} state={audioState} />
+      ) : null}
+
+      {query.data ? (
+        <div className="border-b px-6 py-4">
+          <MeetingSummary
+            meetingId={meetingId}
+            summary={query.data.summary}
+            status={query.data.summaryStatus}
+            onRegenerate={() => summarise.mutate()}
+            isRegenerating={summarise.isPending}
+            onPatchActionItem={(itemId, body) =>
+              patchActionItem.mutate({ itemId, body })
+            }
+          />
+        </div>
       ) : null}
 
       <CardContent className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">

@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
-import { Copy, History as HistoryIcon, Mic, Sparkles } from "lucide-react";
+import { Copy, History as HistoryIcon, Mic } from "lucide-react";
 import { toast } from "sonner";
 
+import { MeetingSummary } from "@/components/meeting-summary";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useMeetingDetail } from "@/hooks/use-meeting-detail";
+import { usePatchActionItem } from "@/hooks/use-patch-action-item";
 import { useRecording } from "@/hooks/use-recording";
+import { useSummariseMeeting } from "@/hooks/use-summarise-meeting";
 import { formatDuration } from "@/lib/format-duration";
 import { speakerLabel } from "@/lib/speaker-label";
 import { countSpeakers, countWords, renderTranscriptForClipboard } from "@/lib/transcript-stats";
@@ -26,6 +30,13 @@ import { useUiStore } from "@/stores/ui-store";
  * AC #4 (summary processing affordance): honest placeholder; Phase 3
  *       will replace this card with real summary content.
  */
+// Phase-3 summary polling: the WS finalize dispatches the Celery
+// task; the desktop polls GET /meetings/:id every 3s while the
+// summary is still in flight (FR-3.15: ≤45s wall-clock). The 5-min
+// cap is a safety net — if the worker died, the user sees a "Retry"
+// affordance via the failed-status path inside <MeetingSummary>.
+const SUMMARY_POLL_INTERVAL_MS = 3_000;
+
 export function SessionEndedView() {
   const { start } = useRecording();
   const goHistory = useUiStore((s) => s.goHistory);
@@ -33,7 +44,22 @@ export function SessionEndedView() {
   const endedAt = useRecordingStore((s) => s.endedAt);
   const durationMs = useRecordingStore((s) => s.durationMs);
   const elapsedMs = useRecordingStore((s) => s.elapsedMs);
+  const sessionId = useRecordingStore((s) => s.sessionId);
   const lines = useTranscriptStore((s) => s.lines);
+
+  // The recording-store sessionId IS the meeting id (the desktop
+  // POSTs /meetings before the WS opens; the meeting row's UUID is
+  // the WS session_id). Pass it to the summary detail hook so the
+  // SessionEnded view sees the same payload the History detail view
+  // would see — single source of truth.
+  // Skip polling when there's no session yet OR when no transcript
+  // landed (the summarise task short-circuits to too_short anyway).
+  const shouldPoll = sessionId !== null && lines.length > 0;
+  const detailQuery = useMeetingDetail(sessionId, {
+    refetchIntervalMs: shouldPoll ? SUMMARY_POLL_INTERVAL_MS : false,
+  });
+  const summarise = useSummariseMeeting(sessionId ?? "");
+  const patchActionItem = usePatchActionItem(sessionId ?? "");
 
   // While phase === "stopping" the precise durationMs hasn't been
   // written yet (confirmStop runs after the Rust IPC returns). Fall
@@ -87,9 +113,20 @@ export function SessionEndedView() {
         <div className="shrink-0">
           <StatGrid stats={stats} />
         </div>
-        <div className="shrink-0">
-          <SummaryPlaceholder />
-        </div>
+        {sessionId ? (
+          <div className="shrink-0">
+            <MeetingSummary
+              meetingId={sessionId}
+              summary={detailQuery.data?.summary ?? null}
+              status={detailQuery.data?.summaryStatus ?? "pending"}
+              onRegenerate={() => summarise.mutate()}
+              isRegenerating={summarise.isPending}
+              onPatchActionItem={(itemId, body) =>
+                patchActionItem.mutate({ itemId, body })
+              }
+            />
+          </div>
+        ) : null}
         <div className="shrink-0">
           <ActionRow
             onStartNew={handleStartNew}
@@ -123,24 +160,6 @@ function StatCard({ label, value }: { label: string; value: string }) {
         </span>
       </CardContent>
     </Card>
-  );
-}
-
-function SummaryPlaceholder() {
-  return (
-    <div
-      className="flex items-start gap-3 rounded-xl border border-dashed border-border px-4 py-3"
-      role="note"
-    >
-      <Sparkles className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Meeting summary</span>
-        <span className="text-sm text-muted-foreground">
-          Automatic summaries will be available in a future release. The transcript above is yours
-          to copy or review now.
-        </span>
-      </div>
-    </div>
   );
 }
 
