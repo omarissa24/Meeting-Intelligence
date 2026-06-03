@@ -669,17 +669,6 @@ dependencies = [
     { name = "workos" },
 ]
 
-[package.optional-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "moto", extra = ["s3"] },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-postgresql" },
-    { name = "ruff" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "httpx" },
@@ -699,24 +688,16 @@ requires-dist = [
     { name = "deepgram-sdk", specifier = ">=4.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
-    { name = "moto", extras = ["s3"], marker = "extra == 'dev'", specifier = ">=5.0.0,<6" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13.0" },
     { name = "pgvector", specifier = ">=0.3.6,<0.4" },
     { name = "psycopg", extras = ["binary", "pool"], specifier = ">=3.2.3,<3.3" },
     { name = "pydantic", specifier = ">=2.9.0" },
     { name = "pydantic-settings", specifier = ">=2.6.0" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.9.0,<3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24.0" },
-    { name = "pytest-postgresql", marker = "extra == 'dev'", specifier = ">=6.1.0,<7" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.7.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36,<2.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
     { name = "workos", specifier = ">=5.0.0,<6" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
