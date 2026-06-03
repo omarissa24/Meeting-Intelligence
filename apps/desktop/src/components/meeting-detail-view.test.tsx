@@ -34,6 +34,8 @@ function makeDetail(overrides: Partial<MeetingDetail> = {}): MeetingDetail {
     durationSeconds: 2520,
     speakerCount: 2,
     audioObjectKey: null,
+    summary: null,
+    summaryStatus: "pending",
     segments: [
       {
         id: "seg-1",

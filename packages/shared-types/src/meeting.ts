@@ -10,6 +10,73 @@ import type { TranscriptLine } from "./transcript";
 
 export type MeetingStatus = "pending" | "recording" | "completed" | "failed";
 
+/**
+ * Phase-3 summary lifecycle.
+ *
+ *   pending    → no row exists yet (mid-recording or just before the
+ *                Celery task fires).
+ *   processing → row exists, LangGraph pipeline running.
+ *   completed  → final structured summary written.
+ *   failed     → LLM produced unrecoverable output (validation twice
+ *                or tool-use refusal). `error` carries the message.
+ *   too_short  → transcript fell below the 50-word floor; no LLM call.
+ */
+export type SummaryStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "too_short";
+
+/** A single topic discussed during the meeting plus its estimated duration. */
+export interface Topic {
+  name: string;
+  durationSeconds: number;
+}
+
+/** One action item — independently editable via PATCH. */
+export interface ActionItem {
+  id: string;
+  description: string;
+  /** `null` when no owner was stated; UI renders "Unassigned". */
+  owner: string | null;
+  /** ISO 8601 date (yyyy-mm-dd) or `null` when no deadline was stated. */
+  deadline: string | null;
+  completed: boolean;
+  /** UTC timestamp set when `completed` flips true; cleared when it flips false. */
+  completedAt: string | null;
+  /** Stable LLM emission order, preserved across regenerates. */
+  orderIndex: number;
+}
+
+/**
+ * Structured summary payload. `decisions` is a flat list of one-sentence
+ * strings; if the meeting had no decisions it's `[]` and the UI renders
+ * "No decisions recorded" — never invented content (FR-3.08 guard).
+ *
+ * `confidenceLow` indicates fewer than 2 distinct speakers were
+ * detected; the UI surfaces this as a footnote.
+ *
+ * Token counts and `modelVersion` are populated for observability;
+ * `error` is non-null only when `status === "failed"`.
+ */
+export interface MeetingSummary {
+  status: SummaryStatus;
+  summary: string | null;
+  decisions: string[];
+  topics: Topic[];
+  actionItems: ActionItem[];
+  confidenceLow: boolean;
+  modelVersion: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  error: string | null;
+  /** First time the summary was generated for this meeting. */
+  generatedAt: string | null;
+  /** Most recent regenerate, or null when this is the original write. */
+  regeneratedAt: string | null;
+}
+
 export interface Meeting {
   id: string;
   title: string | null;
@@ -36,6 +103,28 @@ export interface TranscriptSegment
 
 export interface MeetingDetail extends Meeting {
   segments: TranscriptSegment[];
+  /**
+   * Phase-3 structured summary; `null` while the row hasn't been
+   * written yet (`summaryStatus === "pending"`). Once the Celery task
+   * upserts, this is non-null and `summary.status` matches
+   * `summaryStatus`.
+   */
+  summary: MeetingSummary | null;
+  /**
+   * Convenience field equal to `summary?.status ?? "pending"`. The
+   * desktop polls while this is `"pending"` or `"processing"`.
+   */
+  summaryStatus: SummaryStatus;
+}
+
+/** Body for PATCH /meetings/:id/action_items/:item_id (partial update). */
+export interface PatchActionItemRequest {
+  description?: string;
+  /** Explicit `null` clears the owner; omit to leave unchanged. */
+  owner?: string | null;
+  /** ISO 8601 date or `null` to clear; omit to leave unchanged. */
+  deadline?: string | null;
+  completed?: boolean;
 }
 
 export interface MeetingListResponse {
