@@ -19,8 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from meeting_intelligence.auth.workos_provider import WorkOSAuthProvider
 from meeting_intelligence.config import Settings, get_settings
 from meeting_intelligence.interfaces.auth import AuthProvider
+from meeting_intelligence.interfaces.llm import LLMProvider
 from meeting_intelligence.interfaces.storage import ObjectStorageProvider
 from meeting_intelligence.interfaces.stt import STTProvider
+from meeting_intelligence.llm import AnthropicClaudeLLM, InMemoryFakeLLM
 from meeting_intelligence.storage import LocalDiskObjectStorage, S3ObjectStorage
 from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
 from meeting_intelligence.stt.in_memory_echo import InMemoryEchoSTT
@@ -45,6 +47,35 @@ def _build_provider() -> STTProvider:
 
 def get_stt_provider() -> STTProvider:
     return _build_provider()
+
+
+# --- LLM provider ---------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _build_llm_provider() -> LLMProvider:
+    """Construct the LLM provider once per process based on settings.
+
+    Default is `fake` so dev/CI work without an API key. Production
+    flips `LLM_PROVIDER=anthropic` and supplies `ANTHROPIC_API_KEY`.
+    Tests that need to reset between cases can clear the cache via
+    `_build_llm_provider.cache_clear()`.
+    """
+    settings = get_settings()
+    if settings.llm_provider == "anthropic":
+        if not settings.anthropic_api_key:
+            raise RuntimeError(
+                "LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY to be set"
+            )
+        return AnthropicClaudeLLM(
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+        )
+    return InMemoryFakeLLM()
+
+
+def get_llm_provider() -> LLMProvider:
+    return _build_llm_provider()
 
 
 # --- Auth provider --------------------------------------------------------
