@@ -23,6 +23,7 @@ import itertools
 import json
 import logging
 import os
+import tempfile
 import wave
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
@@ -41,6 +42,7 @@ from meeting_intelligence.api.deps import (
 )
 from meeting_intelligence.auth.deps import _resolve_user
 from meeting_intelligence.auth.workos_provider import TokenVerificationError
+from meeting_intelligence.config import get_settings
 from meeting_intelligence.db.models.meeting import Meeting
 from meeting_intelligence.db.models.transcript_segment import TranscriptSegment
 from meeting_intelligence.db.rls import set_request_user
@@ -368,24 +370,43 @@ async def transcript_ws(
     stt_failed = False
     stt_failure_msg = ""
 
-    # Optional debug WAV writer — one per session when AUDIO_DUMP_DIR is set.
-    # Lets the operator listen to exactly what we feed Deepgram, byte for byte.
+    # WAV capture tap. Two cases:
+    #   1. AUDIO_DUMP_DIR set — diagnostic dump (Phase-1 instrumentation),
+    #      writes alongside the canonical capture.
+    #   2. Authenticated session (meeting_uuid set) — required so the
+    #      `archive_meeting_audio` Celery task can encode the file to
+    #      MP3 and upload after the WS closes (US-11).
+    # When neither applies (legacy demo path, no DB factory attached),
+    # we don't write a WAV at all.
     wav_writer: wave.Wave_write | None = None
-    if _AUDIO_DUMP_DIR:
+    archive_wav_path: Path | None = None
+    if _AUDIO_DUMP_DIR or meeting_uuid is not None:
         try:
-            dump_dir = Path(_AUDIO_DUMP_DIR)
-            dump_dir.mkdir(parents=True, exist_ok=True)
-            wav_path = dump_dir / f"{session_id}.wav"
-            wav_writer = wave.open(str(wav_path), "wb")
+            settings_for_temp = get_settings()
+            archive_root = (
+                Path(_AUDIO_DUMP_DIR)
+                if _AUDIO_DUMP_DIR
+                else Path(
+                    settings_for_temp.audio_archive_temp_root
+                    or tempfile.gettempdir()
+                )
+                / "meeting-intelligence-archive"
+            )
+            archive_root.mkdir(parents=True, exist_ok=True)
+            archive_wav_path = archive_root / f"{session_id}.wav"
+            wav_writer = wave.open(str(archive_wav_path), "wb")
             wav_writer.setnchannels(1)
             wav_writer.setsampwidth(2)  # 16-bit PCM
             wav_writer.setframerate(16_000)
-            log.info("transcript.audio_dump_open session_id=%s path=%s", session_id, wav_path)
+            log.info(
+                "transcript.audio_dump_open session_id=%s path=%s", session_id, archive_wav_path
+            )
         except OSError as exc:
             log.warning(
                 "transcript.audio_dump_failed session_id=%s err=%s", session_id, exc
             )
             wav_writer = None
+            archive_wav_path = None
 
     distinct_speakers: set[str] = set()
 
@@ -571,6 +592,32 @@ async def transcript_ws(
             speaker_count=len(distinct_speakers),
             final_status="failed" if stt_failed else "completed",
         )
+        # US-11: dispatch the audio archive Celery task. Best-effort —
+        # if the broker is unreachable (worker down in dev), log and
+        # leave the temp WAV behind for the next worker run to pick up
+        # via a future janitor task. We don't 500 the WS over this.
+        if archive_wav_path is not None and archive_wav_path.exists():
+            try:
+                from meeting_intelligence.worker.tasks.audio_archive import (
+                    archive_meeting_audio,
+                )
+
+                archive_meeting_audio.delay(
+                    meeting_id=str(meeting_uuid),
+                    user_id=str(user_id),
+                    wav_path=str(archive_wav_path),
+                )
+                log.info(
+                    "transcript.audio_archive_dispatched session_id=%s wav_path=%s",
+                    session_id,
+                    archive_wav_path,
+                )
+            except Exception as exc:  # broker errors are varied
+                log.warning(
+                    "transcript.audio_archive_dispatch_failed session_id=%s err=%s",
+                    session_id,
+                    exc,
+                )
 
     if final_latencies_ms:
         log.info(

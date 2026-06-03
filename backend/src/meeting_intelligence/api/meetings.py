@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -21,10 +21,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import bindparam, desc, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from meeting_intelligence.api.deps import get_object_storage
 from meeting_intelligence.auth.deps import get_current_user, get_request_session
+from meeting_intelligence.config import Settings, get_settings
 from meeting_intelligence.db.models.meeting import Meeting
 from meeting_intelligence.db.models.transcript_segment import TranscriptSegment
 from meeting_intelligence.db.models.user import User
+from meeting_intelligence.interfaces.storage import ObjectStorageProvider
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 log = logging.getLogger("meeting_intelligence.meetings")
@@ -62,6 +65,10 @@ class MeetingDTO(_CamelModel):
     endedAt: datetime | None
     durationSeconds: int | None
     speakerCount: int | None
+    # US-11: present when an MP3 archive has been uploaded. The desktop
+    # surfaces a player when this is non-null; otherwise the audio is
+    # still encoding (or the user deleted it via DELETE /audio).
+    audioObjectKey: str | None = None
 
 
 class TranscriptSegmentDTO(_CamelModel):
@@ -80,6 +87,19 @@ class MeetingDetailDTO(MeetingDTO):
 class MeetingListResponse(_CamelModel):
     items: list[MeetingDTO]
     nextCursor: str | None = None
+
+
+class MeetingAudioResponse(_CamelModel):
+    """Pre-signed URL for an archived meeting's audio.
+
+    The desktop fetches this once and feeds the URL into an `<audio>`
+    element. URL TTL is bounded by `audio_presigned_url_ttl_seconds`
+    (FR-2.07: 1 hour max) — `expiresAt` is the wall-clock UTC moment
+    when the URL stops working.
+    """
+
+    audioUrl: str
+    expiresAt: datetime
 
 
 # --- helpers -----------------------------------------------------------------
@@ -123,6 +143,7 @@ def _meeting_to_dto(m: Meeting) -> MeetingDTO:
         endedAt=m.ended_at,
         durationSeconds=m.duration_seconds,
         speakerCount=m.speaker_count,
+        audioObjectKey=m.audio_object_key,
     )
 
 
@@ -287,6 +308,76 @@ async def patch_meeting(
         log.info("meetings.patched id=%s", meeting.id)
 
     return _meeting_to_dto(meeting)
+
+
+@router.get("/{meeting_id}/audio", response_model=MeetingAudioResponse)
+async def get_meeting_audio(
+    meeting_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_request_session)],
+    storage: Annotated[ObjectStorageProvider, Depends(get_object_storage)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> MeetingAudioResponse:
+    """Return a pre-signed URL for the meeting's archived MP3.
+
+    404 when the meeting doesn't exist *or* the audio hasn't been
+    archived yet (encode in flight, or audio explicitly deleted via
+    DELETE). The desktop distinguishes "still encoding" from "no
+    audio" via `meetings.audioObjectKey` on the detail payload.
+    """
+    meeting = (
+        await session.execute(select(Meeting).where(Meeting.id == meeting_id))
+    ).scalar_one_or_none()
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="meeting not found")
+    if not meeting.audio_object_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no audio archive")
+
+    ttl = settings.audio_presigned_url_ttl_seconds
+    url = await storage.presigned_url(meeting.audio_object_key, expires_in=ttl)
+    expires_at = datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=ttl)
+    return MeetingAudioResponse(audioUrl=url, expiresAt=expires_at)
+
+
+@router.delete("/{meeting_id}/audio", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meeting_audio(
+    meeting_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_request_session)],
+    storage: Annotated[ObjectStorageProvider, Depends(get_object_storage)],
+) -> None:
+    """Delete the meeting's archived audio without touching the transcript.
+
+    Idempotent: 204 even when there's no audio to delete (RLS-scoped
+    so a cross-user attempt 404s cleanly via the `meeting is None`
+    branch). Storage delete is best-effort — if the object is already
+    gone the provider treats it as a no-op (S3 contract); if storage
+    is genuinely down we surface 502.
+    """
+    meeting = (
+        await session.execute(select(Meeting).where(Meeting.id == meeting_id))
+    ).scalar_one_or_none()
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="meeting not found")
+    if not meeting.audio_object_key:
+        return None
+
+    key = meeting.audio_object_key
+    try:
+        await storage.delete(key)
+    except Exception as exc:  # storage provider failures are varied
+        log.warning(
+            "meetings.audio_delete_storage_failed id=%s key=%s err=%s",
+            meeting_id,
+            key,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="storage delete failed"
+        ) from exc
+
+    meeting.audio_object_key = None
+    await session.flush()
+    log.info("meetings.audio_deleted id=%s key=%s", meeting_id, key)
+    return None
 
 
 __all__ = ["router"]

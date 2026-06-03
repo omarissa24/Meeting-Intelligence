@@ -18,6 +18,9 @@ dependencies = [
     "workos>=5.0.0,<6",
     "pyjwt[crypto]>=2.9.0,<3",
     "httpx>=0.27.0",
+    # US-11 audio archive: Celery worker + S3 client.
+    "celery[redis]>=5.4.0,<6",
+    "aioboto3>=13.0.0,<14",
 ]
 
 [project.optional-dependencies]
@@ -28,6 +31,8 @@ dev = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
     "pytest-postgresql>=6.1.0,<7",
+    # S3 mocking for storage + audio-archive task tests.
+    "moto[s3]>=5.0.0,<6",
 ]
 
 [build-system]
@@ -45,6 +50,8 @@ dev-dependencies = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
     "pytest-postgresql>=6.1.0,<7",
+    # S3 mocking for storage + audio-archive task tests.
+    "moto[s3]>=5.0.0,<6",
 ]
 
 [tool.pytest.ini_options]
@@ -79,4 +86,12 @@ explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "pytest_postgresql.*"
+ignore_missing_imports = true
+
+# Third-party libraries without inline type stubs. We don't write type-
+# heavy code against any of them — the surface area we touch (Celery
+# decorators, aioboto3 client builder, boto3 client) is dynamically
+# typed by design — so the cost of true stubs would dwarf the benefit.
+[[tool.mypy.overrides]]
+module = ["aioboto3", "boto3", "botocore.*", "celery", "celery.*"]
 ignore_missing_imports = true

@@ -111,11 +111,11 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [x] Full transcript retrievable from DB after app restart — `GET /meetings/:id` returns `segments[]` ordered by `start_ms`.
   - [x] If app crashes mid-meeting, already-persisted lines retained and visible on next launch — backend persists each final segment in real time (`_persist_final_segment` in `backend/src/meeting_intelligence/api/transcript.py`), and the desktop now surfaces them via the History → Detail flow (`apps/desktop/src/components/history-view.tsx` → `apps/desktop/src/components/meeting-detail-view.tsx`). The crashed meeting will appear with whatever finals were persisted before the crash.
 - [ ] **US-11 — Audio recording archived**
-  - [ ] At meeting end, raw audio compressed to MP3 (128 kbps) and uploaded to S3 asynchronously
-  - [ ] Audio player available in meeting detail view once upload completes
-  - [ ] Upload progress visible; UI stays usable during upload
-  - [ ] Audio files stored under a path including workspace ID and meeting ID
-  - [ ] User can delete a meeting's audio independently of the transcript
+  - [x] At meeting end, raw audio compressed to MP3 (128 kbps) and uploaded to S3 asynchronously — WS handler tees PCM to a temp WAV (`api/transcript.py`), the `archive_meeting_audio` Celery task (`worker/tasks/audio_archive.py`) shells out to `ffmpeg -codec:a libmp3lame -b:a 128k`, then uploads via the configured `ObjectStorageProvider`. S3 (`storage/s3.py`) and `LocalDiskObjectStorage` (`storage/local_disk.py`) both implement the interface; backend defaults to `local` for dev.
+  - [ ] Audio player available in meeting detail view once upload completes — desktop player ships in a follow-up slice. Backend exposes `GET /meetings/:id/audio` returning `{audioUrl, expiresAt}` (FR-2.07).
+  - [ ] Upload progress visible; UI stays usable during upload — desktop slice concern.
+  - [x] Audio files stored under a path including workspace ID and meeting ID — keys are `meetings/<user_id>/<meeting_id>.mp3` (`worker/tasks/audio_archive.py:_do_archive`).
+  - [x] User can delete a meeting's audio independently of the transcript — `DELETE /meetings/:id/audio` (FR-2.11) calls `storage.delete()` and nulls `audio_object_key`. Idempotent under RLS; transcript segments untouched. Covered by `tests/test_meetings_audio_routes.py::test_delete_audio_idempotent_and_nulls_column`.
 - [ ] **US-12 — Name and tag a meeting**
   - [x] Meeting detail view has editable title field (default auto-generated) — `<EditableTitle/>` in `apps/desktop/src/components/meeting-detail-view.tsx` swaps from a quiet `<h2>` into an `<Input>` on focus; the read-only display still falls back to "Untitled meeting" when the stored title is null/blank.
   - [x] Title saved on blur or Enter — `commit()` fires from `onBlur` and from `Enter` in `onKeyDown`; Escape reverts. Empty trimmed strings are a deliberate no-op (see `meeting-detail-view.tsx:169-181`).
@@ -125,7 +125,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [x] All API endpoints validate JWT and return 401 for unauthenticated requests — every authed route depends on `get_request_session`, which transitively depends on `get_current_user`; `tests/test_meetings_routes.py::test_*_requires_auth` covers the gate.
   - [x] DB queries scoped by user ID; no cross-user data leakage — RLS policies on `users`/`meetings`/`transcript_segments` keyed off `app.current_user_id`; `set_request_user` binds it per request. Cross-user 404 verified in `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting`.
   - [ ] All data transmitted over TLS 1.3; HTTP rejected — infra-level concern, gated on the deploy boundary (Fly/ECS load balancer config).
-  - [ ] S3 objects not publicly accessible; downloads only via pre-signed URLs with 1 h expiry — gated on the audio-archive iteration (FR-2.06/2.07).
+  - [x] S3 objects not publicly accessible; downloads only via pre-signed URLs with 1 h expiry — `S3ObjectStorage.presigned_url` mints v4-signed URLs with `ExpiresIn=settings.audio_presigned_url_ttl_seconds` (default 3600). The S3 bucket itself is provisioned without public read; the only access path is through the API, which generates short-lived signed URLs. Local-disk dev path uses HMAC-signed tokens with the same TTL contract.
   - [ ] Postgres and S3 encrypted at rest (AES-256) — infra-level concern.
 
 ### Functional Requirements
@@ -135,15 +135,15 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-2.03 (Must)** All API endpoints protected by JWT auth middleware — `get_current_user` + `get_request_session` enforce bearer auth on every meetings route; tests under `tests/test_meetings_routes.py` cover the 401 path. WS routes also gate via `Sec-WebSocket-Protocol: bearer.<jwt>` when the DB factory is attached.
 - [x] **FR-2.04 (Must)** Each transcript line persisted to `transcript_segments` in real time — `_persist_final_segment` writes per-final under RLS; covered by `tests/test_transcript_ws_persistence.py::test_ws_persists_finals_and_stamps_meeting`.
 - [x] **FR-2.05 (Must)** `meetings` table stores: id, user_id, title, status, started_at, ended_at, duration_seconds, speaker_count — schema landed in `0001_phase2_foundation`; writes wired through `POST /meetings` (creates row, status='recording') and `_stamp_meeting_completed` (sets ended_at/duration_seconds/speaker_count/status='completed' on WS close).
-- [ ] **FR-2.06 (Must)** On meeting completion, Celery task compresses + uploads raw audio to S3
-- [ ] **FR-2.07 (Must)** S3 objects accessible only via pre-signed URLs, max 1 h expiry
+- [x] **FR-2.06 (Must)** On meeting completion, Celery task compresses + uploads raw audio to S3 — `archive_meeting_audio` task in `backend/src/meeting_intelligence/worker/tasks/audio_archive.py`; encodes via `ffmpeg ... -b:a 128k` and uploads through `ObjectStorageProvider`. Dispatched from the WS handler's `finally` block.
+- [x] **FR-2.07 (Must)** S3 objects accessible only via pre-signed URLs, max 1 h expiry — `GET /meetings/:id/audio` returns `{audioUrl, expiresAt}` from the storage provider's `presigned_url(ttl=audio_presigned_url_ttl_seconds)`; default 3600s. Local-disk URLs are HMAC-signed tokens routed through the dev-only `/storage/local/{token}` endpoint that 404s in production.
 - [x] **FR-2.08 (Must)** `GET /meetings` returns paginated history for authenticated user — cursor-based, default `limit=25`, max 100; covered by `tests/test_meetings_routes.py::test_list_meetings_paginates_newest_first`.
 - [x] **FR-2.09 (Must)** `GET /meetings/:id` returns metadata + all transcript segments — finals only, ordered by `start_ms`; covered by `tests/test_meetings_routes.py::test_get_meeting_returns_segments_only_finals` and the persistence E2E test.
 - [x] **FR-2.10 (Must)** `PATCH /meetings/:id` updates title and tags — tag count + length validation in `_validate_tags`; `meetings.tags` column added in migration 0002.
-- [ ] **FR-2.11 (Should)** `DELETE /meetings/:id/audio` removes S3 audio without deleting transcript
+- [x] **FR-2.11 (Should)** `DELETE /meetings/:id/audio` removes S3 audio without deleting transcript — implemented in `api/meetings.py::delete_meeting_audio`; idempotent (204 even when no key); transcript segments untouched.
 - [x] **FR-2.12 (Must)** All DB queries scoped by user_id; Row Level Security enabled on all tables — every authenticated route uses `get_request_session`, which calls `set_request_user(session, user.id)` before yielding. Cross-user 404 verified by `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting` and the WS-side `test_ws_rejects_meeting_owned_by_another_user`.
 - [ ] **FR-2.13 (Must)** All data over TLS 1.3; server rejects non-TLS connections — infra-level concern (deploy load balancer config); not a backend code change.
-- [ ] **FR-2.14 (Must)** Redis is the Celery broker for all background tasks
+- [x] **FR-2.14 (Must)** Redis is the Celery broker for all background tasks — Celery app at `worker/celery_app.py` builds with `broker=settings.redis_url` (Redis 7 from compose). Compose `worker` service runs `celery -A meeting_intelligence.worker.celery_app worker -l info`. Audio archive is the first task (US-11); future tasks register under `worker/tasks/`.
 - [x] **FR-2.15 (Must)** Alembic manages all schema changes in version control
 
 ### Definition of Done — Phase 2 Exit Criteria

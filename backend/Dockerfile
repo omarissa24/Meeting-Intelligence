@@ -23,6 +23,20 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.12-slim AS runtime
 
+# `ffmpeg` is required by the Celery audio-archive task (US-11) which
+# encodes captured WAVs to MP3 via subprocess. Missing it would make
+# the task fail on first run rather than at deploy time.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# `uv` is needed in the runtime image so the Celery worker container
+# can launch with `uv run celery ...`. The API container's entrypoint
+# uses uvicorn directly off the venv PATH, but the worker command
+# composes through uv; copying the binary keeps both call shapes
+# uniform.
+COPY --from=ghcr.io/astral-sh/uv:0.5.5 /uv /bin/
+
 RUN useradd --create-home --uid 1000 app
 
 WORKDIR /app

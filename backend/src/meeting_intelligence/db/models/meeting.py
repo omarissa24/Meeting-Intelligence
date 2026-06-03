@@ -37,6 +37,10 @@ class Meeting(Base):
     )
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     speaker_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # US-11 audio archive: storage key written by `archive_meeting_audio`
+    # after the Celery task uploads the MP3. NULL while encoding is in
+    # flight, after a failed upload, or after explicit DELETE.
+    audio_object_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

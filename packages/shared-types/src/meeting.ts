@@ -19,6 +19,13 @@ export interface Meeting {
   endedAt: string | null;
   durationSeconds: number | null;
   speakerCount: number | null;
+  /**
+   * Object-storage key (per the configured `ObjectStorageProvider`) for
+   * the MP3 archive. `null` while the Celery archive task is in flight,
+   * after a failed upload, or after explicit DELETE /meetings/:id/audio.
+   * Desktop renders an audio player only when this is non-null.
+   */
+  audioObjectKey: string | null;
 }
 
 /** Persisted transcript segment as returned by GET /meetings/:id. */

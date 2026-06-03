@@ -65,6 +65,27 @@ services:
       redis:
         condition: service_healthy
 
+  # Celery worker — currently consumes the audio-archive task queue
+  # (US-11). Shares the backend image so deps + ffmpeg stay in one
+  # build context. Env file overlays the same `.env` the API uses so
+  # storage credentials, signing keys, and DB URL match.
+  worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: ["uv", "run", "celery", "-A", "meeting_intelligence.worker.celery_app", "worker", "-l", "info"]
+    env_file:
+      - path: ../backend/.env
+        required: false
+    environment:
+      DATABASE_URL: postgresql+psycopg://app_user:${APP_USER_PASSWORD:-app_dev_password}@postgres:5432/${POSTGRES_DB:-meeting_intelligence}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   redis-data:

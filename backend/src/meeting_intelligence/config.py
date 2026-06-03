@@ -32,11 +32,29 @@ class Settings(BaseSettings):
     redis_url: str | None = None
 
     # Object storage (S3 / R2)
+    # `object_storage_backend` selects the concrete provider: "s3" routes
+    # through `S3ObjectStorage` (boto3, R2-compatible); "local" routes
+    # through `LocalDiskObjectStorage` and serves audio via the dev-only
+    # /storage/local/{token} route. Default "local" keeps dev/test runs
+    # working without S3 credentials. Production deploys MUST set this
+    # to "s3".
+    object_storage_backend: Literal["s3", "local"] = "local"
     s3_endpoint_url: str | None = None
     s3_bucket: str | None = None
     s3_access_key_id: str | None = None
     s3_secret_access_key: str | None = None
     s3_region: str | None = None
+    # Override the default temp roots for tests / sandboxed environments.
+    # Both fall back to `tempfile.gettempdir()` when unset.
+    local_object_storage_root: str | None = None
+    audio_archive_temp_root: str | None = None
+    # Symmetric secret for signing local-disk presigned URL tokens. ONLY
+    # used when `object_storage_backend == "local"`. Auto-generated per
+    # process if unset (dev convenience); production ignores this slot
+    # because it must be on the S3 path anyway.
+    local_storage_signing_key: str | None = None
+    # FR-2.07: pre-signed audio URLs expire in 1 hour by default.
+    audio_presigned_url_ttl_seconds: int = 3600
 
     # External providers
     deepgram_api_key: str | None = None
