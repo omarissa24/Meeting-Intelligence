@@ -56,9 +56,11 @@ class Settings(BaseSettings):
     # 127.0.0.1 loopback the Tauri shell intercepts; for backend-only smoke
     # tests it can stay as the FastAPI /auth/callback URL.
     workos_redirect_uri: str | None = None
-    # WorkOS access tokens carry `iss = https://api.workos.com`. Override per
-    # environment if WorkOS rotates issuers.
-    workos_jwt_issuer: str = "https://api.workos.com"
+    # AuthKit (User Management) access tokens carry
+    # `iss = https://api.workos.com/user_management/<client_id>`. Leave unset
+    # and the verifier derives it from `workos_client_id`; override via
+    # `WORKOS_JWT_ISSUER` only if WorkOS publishes a new issuer convention.
+    workos_jwt_issuer: str | None = None
 
     # Dev-token signing key — used ONLY by /auth/dev-token in non-prod
     # environments to mint test JWTs that the same JWKS-aware verifier accepts

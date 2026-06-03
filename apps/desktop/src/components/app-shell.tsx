@@ -1,25 +1,27 @@
 import { useEffect, useState } from "react";
+import { History as HistoryIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConnectionStatus } from "@/components/connection-status";
+import { HistoryView } from "@/components/history-view";
+import { MeetingDetailView } from "@/components/meeting-detail-view";
 import { PermissionPrompt } from "@/components/permission-prompt";
 import { ReconnectBanner } from "@/components/reconnect-banner";
 import { RecordControl } from "@/components/record-control";
 import { SessionEndedView } from "@/components/session-ended-view";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
+import { Button } from "@/components/ui/button";
 import { useRecording } from "@/hooks/use-recording";
+import { useUiStore } from "@/stores/ui-store";
 
 export function AppShell() {
-  const {
-    phase,
-    elapsedMs,
-    error,
-    permissionState,
-    start,
-    stop,
-    requestPermissions,
-  } = useRecording();
+  const { phase, elapsedMs, error, permissionState, start, stop, requestPermissions } =
+    useRecording();
+
+  const view = useUiStore((s) => s.view);
+  const selectedMeetingId = useUiStore((s) => s.selectedMeetingId);
+  const goHistory = useUiStore((s) => s.goHistory);
 
   const [permPromptOpen, setPermPromptOpen] = useState(false);
 
@@ -29,6 +31,12 @@ export function AppShell() {
   // the background and the precise durationMs lands when confirmStop
   // runs.
   const isSessionEnded = phase === "stopping" || phase === "stopped";
+
+  // The History entry-point only makes sense when the recording surface
+  // is idle — opening it mid-recording would yank the live transcript
+  // out from under the user. Idle/error/permission flows are fine.
+  const canBrowseHistory =
+    phase === "idle" || phase === "checking-permissions" || phase === "requesting-permissions";
 
   // Auto-open the explainer dialog whenever the user lands in
   // not-determined territory — either on first launch or after the
@@ -87,24 +95,49 @@ export function AppShell() {
             Foundation
           </span>
         </div>
-        <SettingsSheet />
+        <div className="flex items-center gap-1">
+          {canBrowseHistory && view === "recording" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Open meeting history"
+              onClick={goHistory}
+            >
+              <HistoryIcon />
+            </Button>
+          ) : null}
+          <SettingsSheet />
+        </div>
       </header>
 
       <main className="flex flex-1 flex-col gap-6 overflow-hidden px-8 pb-6">
-        {!isSessionEnded ? (
-          <section className="flex justify-center py-6">
-            <RecordControl
-              phase={phase}
-              elapsedMs={elapsedMs}
-              onStart={handleStart}
-              onStop={handleStop}
-            />
+        {view === "recording" ? (
+          <>
+            {!isSessionEnded ? (
+              <section className="flex justify-center py-6">
+                <RecordControl
+                  phase={phase}
+                  elapsedMs={elapsedMs}
+                  onStart={handleStart}
+                  onStop={handleStop}
+                />
+              </section>
+            ) : null}
+            <ReconnectBanner onRetry={handleRetry} />
+            <section className="min-h-0 flex-1">
+              {isSessionEnded ? <SessionEndedView /> : <TranscriptPanel />}
+            </section>
+          </>
+        ) : view === "history" ? (
+          <section className="min-h-0 flex-1">
+            <HistoryView />
+          </section>
+        ) : view === "detail" && selectedMeetingId ? (
+          <section className="min-h-0 flex-1">
+            <MeetingDetailView meetingId={selectedMeetingId} />
           </section>
         ) : null}
-        <ReconnectBanner onRetry={handleRetry} />
-        <section className="min-h-0 flex-1">
-          {isSessionEnded ? <SessionEndedView /> : <TranscriptPanel />}
-        </section>
       </main>
 
       <footer className="flex items-center justify-between gap-4 border-t border-border px-8 py-3 text-xs">

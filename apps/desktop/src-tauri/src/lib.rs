@@ -91,9 +91,9 @@ impl serde::Serialize for CommandError {
 async fn start_recording<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, Mutex<RecordingState>>,
+    session_id: String,
 ) -> Result<StartRecordingResult, CommandError> {
-    // Pre-check: refuse to double-start. Generate the session id
-    // outside the lock so we don't allocate while holding it.
+    // Pre-check: refuse to double-start.
     {
         let guard = state
             .lock()
@@ -103,7 +103,15 @@ async fn start_recording<R: Runtime>(
         }
     }
 
-    let session_id = Uuid::new_v4().to_string();
+    // Validate the caller-supplied id is a UUID. The backend's
+    // /transcript/ws handler casts it back to UUID and a malformed
+    // string would surface as a confusing "session_id_not_uuid"
+    // reject minutes after the user clicked Record. Catch it here.
+    if Uuid::parse_str(&session_id).is_err() {
+        return Err(CommandError::Audio(format!(
+            "session_id is not a valid UUID: {session_id}"
+        )));
+    }
     let started_at = Utc::now();
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]

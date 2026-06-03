@@ -51,8 +51,8 @@ export interface PermissionsSnapshot {
   screen: PermState;
 }
 
-export async function startRecording(): Promise<StartRecordingResult> {
-  return invoke<StartRecordingResult>("start_recording");
+export async function startRecording(sessionId: string): Promise<StartRecordingResult> {
+  return invoke<StartRecordingResult>("start_recording", { sessionId });
 }
 
 export async function stopRecording(): Promise<StopRecordingResult> {

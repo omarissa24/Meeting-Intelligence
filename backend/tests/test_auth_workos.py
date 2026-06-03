@@ -134,7 +134,10 @@ async def test_unknown_kid_rejected_when_workos_unconfigured() -> None:
 
 
 @pytest.mark.asyncio
-async def test_token_missing_email_rejected() -> None:
+async def test_token_without_email_accepted_with_none() -> None:
+    """WorkOS AuthKit access tokens omit `email` — verify accepts and
+    surfaces email=None. The local `users` row was provisioned at
+    /auth/callback time; per-request resolution looks up by sub."""
     s = _settings()
     now = int(time.time())
     no_email = jwt.encode(
@@ -143,8 +146,9 @@ async def test_token_missing_email_rejected() -> None:
         algorithm="HS256",
         headers={"kid": DEV_KID},
     )
-    with pytest.raises(TokenVerificationError, match="missing 'email'"):
-        await WorkOSAuthProvider(s).verify_token(no_email)
+    user = await WorkOSAuthProvider(s).verify_token(no_email)
+    assert user.user_id == "x"
+    assert user.email is None
 
 
 @pytest.mark.asyncio

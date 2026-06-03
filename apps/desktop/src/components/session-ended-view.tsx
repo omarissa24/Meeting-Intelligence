@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Copy, Mic, Sparkles } from "lucide-react";
+import { Copy, History as HistoryIcon, Mic, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,14 +9,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useRecording } from "@/hooks/use-recording";
 import { formatDuration } from "@/lib/format-duration";
 import { speakerLabel } from "@/lib/speaker-label";
-import {
-  countSpeakers,
-  countWords,
-  renderTranscriptForClipboard,
-} from "@/lib/transcript-stats";
+import { countSpeakers, countWords, renderTranscriptForClipboard } from "@/lib/transcript-stats";
 import { cn } from "@/lib/utils";
 import { useRecordingStore } from "@/stores/recording-store";
 import { SYSTEM_SPEAKER_ID, useTranscriptStore } from "@/stores/transcript-store";
+import { useUiStore } from "@/stores/ui-store";
 
 /**
  * Renders right after the user clicks Stop. Mounts on
@@ -31,6 +28,7 @@ import { SYSTEM_SPEAKER_ID, useTranscriptStore } from "@/stores/transcript-store
  */
 export function SessionEndedView() {
   const { start } = useRecording();
+  const goHistory = useUiStore((s) => s.goHistory);
   const startedAt = useRecordingStore((s) => s.startedAt);
   const endedAt = useRecordingStore((s) => s.endedAt);
   const durationMs = useRecordingStore((s) => s.durationMs);
@@ -73,6 +71,10 @@ export function SessionEndedView() {
     void start();
   };
 
+  const handleViewHistory = () => {
+    goHistory();
+  };
+
   return (
     <Card className="flex h-full flex-col overflow-hidden">
       <CardHeader className="border-b">
@@ -89,7 +91,11 @@ export function SessionEndedView() {
           <SummaryPlaceholder />
         </div>
         <div className="shrink-0">
-          <ActionRow onStartNew={handleStartNew} onCopy={handleCopy} />
+          <ActionRow
+            onStartNew={handleStartNew}
+            onCopy={handleCopy}
+            onViewHistory={handleViewHistory}
+          />
         </div>
         <TranscriptReview lines={lines} />
       </CardContent>
@@ -97,11 +103,7 @@ export function SessionEndedView() {
   );
 }
 
-function StatGrid({
-  stats,
-}: {
-  stats: { duration: string; words: number; speakers: number };
-}) {
+function StatGrid({ stats }: { stats: { duration: string; words: number; speakers: number } }) {
   return (
     <div className="grid grid-cols-3 gap-3">
       <StatCard label="Duration" value={stats.duration} />
@@ -115,9 +117,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <Card size="sm" className="bg-card/60">
       <CardContent className="flex flex-col gap-1 py-1">
-        <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-          {label}
-        </span>
+        <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
         <span className="font-display text-2xl font-normal leading-none tabular-nums tracking-tight">
           {value}
         </span>
@@ -136,8 +136,8 @@ function SummaryPlaceholder() {
       <div className="flex flex-col gap-1">
         <span className="text-sm font-medium">Meeting summary</span>
         <span className="text-sm text-muted-foreground">
-          Automatic summaries will be available in a future release. The
-          transcript above is yours to copy or review now.
+          Automatic summaries will be available in a future release. The transcript above is yours
+          to copy or review now.
         </span>
       </div>
     </div>
@@ -147,9 +147,11 @@ function SummaryPlaceholder() {
 function ActionRow({
   onStartNew,
   onCopy,
+  onViewHistory,
 }: {
   onStartNew: () => void;
   onCopy: () => void;
+  onViewHistory: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -160,6 +162,10 @@ function ActionRow({
       <Button type="button" variant="outline" size="lg" onClick={onCopy}>
         <Copy data-icon="inline-start" className="size-4" />
         Copy transcript
+      </Button>
+      <Button type="button" variant="outline" size="lg" onClick={onViewHistory}>
+        <HistoryIcon data-icon="inline-start" className="size-4" />
+        View history
       </Button>
     </div>
   );
@@ -188,9 +194,7 @@ function TranscriptReview({
             if (line.speakerId === SYSTEM_SPEAKER_ID) {
               return (
                 <li key={`${line.sessionId}-${idx}`} className="text-center">
-                  <p className="text-xs italic text-muted-foreground/80">
-                    — {line.text} —
-                  </p>
+                  <p className="text-xs italic text-muted-foreground/80">— {line.text} —</p>
                 </li>
               );
             }

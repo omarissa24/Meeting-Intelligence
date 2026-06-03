@@ -26,6 +26,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from meeting_intelligence.api.auth import get_workos_client
+from meeting_intelligence.api.deps import get_session_factory
 from meeting_intelligence.config import Settings, get_settings
 from meeting_intelligence.main import app
 
@@ -84,6 +85,11 @@ class _AuthResult:
 class _UserModel:
     def __init__(self, data: dict[str, Any]) -> None:
         self._data = data
+        # Expose the core fields the callback handler reads via attribute
+        # access (`result.user.id`, `result.user.email`) — the real WorkOS
+        # SDK returns a Pydantic model where those are real attributes.
+        self.id = data.get("id")
+        self.email = data.get("email")
 
     def model_dump(self) -> dict[str, Any]:
         return dict(self._data)
@@ -96,10 +102,57 @@ class _StubClient:
         self.user_management = _StubAuth()
 
 
+class _FakeSession:
+    """Captures upsert SQL without touching a real DB."""
+
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, dict[str, Any]]] = []
+        self.committed = False
+
+    async def __aenter__(self) -> _FakeSession:
+        return self
+
+    async def __aexit__(self, *exc: Any) -> None:
+        return None
+
+    async def execute(self, stmt: Any, params: dict[str, Any] | None = None) -> Any:
+        # str(stmt) collapses SQLAlchemy `text()` to its raw SQL; we
+        # only care that the upsert was issued.
+        self.executed.append((str(stmt), params or {}))
+
+        class _Row:
+            def __init__(self, data: dict[str, Any]) -> None:
+                self.id = data.get("id", "fake-id")
+
+        # The route only reads `.execute(...)` for side effect; mimic the
+        # `Result` API shallowly so `await session.execute(...).scalar()`
+        # would not blow up if added later.
+        class _Result:
+            def scalar(self) -> str:
+                return "fake-id"
+
+            def one(self) -> _Row:
+                return _Row({"id": "fake-id"})
+
+        return _Result()
+
+    async def commit(self) -> None:
+        self.committed = True
+
+    async def rollback(self) -> None:
+        return None
+
+
+def _fake_session_factory() -> Any:
+    """Match `async_sessionmaker[AsyncSession]`'s call shape."""
+    return _FakeSession()
+
+
 @pytest.fixture
 def client() -> TestClient:
     stub = _StubClient()
     app.dependency_overrides[get_workos_client] = lambda: stub
+    app.dependency_overrides[get_session_factory] = lambda: _fake_session_factory
     # Pin redirect_uri so the desktop deep-link contract is real.
     settings = Settings(
         workos_api_key="sk_test",
@@ -111,6 +164,7 @@ def client() -> TestClient:
         yield TestClient(app, follow_redirects=False)
     finally:
         app.dependency_overrides.pop(get_workos_client, None)
+        app.dependency_overrides.pop(get_session_factory, None)
         app.dependency_overrides.pop(get_settings, None)
 
 

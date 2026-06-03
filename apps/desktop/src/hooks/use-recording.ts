@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { useCreateMeeting } from "@/hooks/use-create-meeting";
 import {
   subscribeAudioChunks,
   subscribeAudioErrors,
@@ -63,6 +65,11 @@ export function useRecording() {
   const setBufferedCount = useConnectionStore((s) => s.setBufferedCount);
   const setDroppedCount = useConnectionStore((s) => s.setDroppedCount);
   const resetConnection = useConnectionStore((s) => s.reset);
+
+  const createMeeting = useCreateMeeting();
+  const createMeetingAsync = createMeeting.mutateAsync;
+
+  const queryClient = useQueryClient();
 
   const wsRef = useRef<ReconnectingWsClient | null>(null);
   const wsUnsubRef = useRef<(() => void) | null>(null);
@@ -175,7 +182,12 @@ export function useRecording() {
       });
       console.error("stop_recording failed", err);
     }
-  }, [confirmStop, requestStop, teardownWs]);
+    // The backend's _stamp_meeting_completed flips the row from
+    // 'recording' to 'completed' with duration + speaker_count when
+    // the WS closes; invalidate the list so a subsequent /history
+    // visit shows the fresh state without a manual refresh.
+    void queryClient.invalidateQueries({ queryKey: ["meetings"] });
+  }, [confirmStop, queryClient, requestStop, teardownWs]);
 
   const start = useCallback(async () => {
     // 1. Permission gate. Re-check live so a fresh System-Settings
@@ -208,11 +220,25 @@ export function useRecording() {
       return;
     }
 
-    // 2. Now we've got grants — kick off the Rust session.
+    // 2. Provision the meetings row backend-side. The returned id is
+    //    the WS session id; without this the /transcript/ws handler
+    //    rejects with "meeting_not_found_or_not_owned" because RLS
+    //    sees no row for the user. Failing here aborts before audio
+    //    capture starts so the user sees the network error inline,
+    //    not after a successful native start.
     requestStart();
+    let meeting;
+    try {
+      meeting = await createMeetingAsync({ title: null });
+    } catch (err) {
+      cancelStart(err instanceof Error ? err.message : String(err));
+      return;
+    }
+
+    // 3. Kick off the Rust session with the backend-issued id.
     let result;
     try {
-      result = await startRecording();
+      result = await startRecording(meeting.id);
     } catch (err) {
       cancelStart(err instanceof Error ? err.message : String(err));
       return;
@@ -224,7 +250,7 @@ export function useRecording() {
       nowMs: Date.now(),
     });
 
-    // 3. Open the reconnecting WebSocket and wire the audio bridge.
+    // 4. Open the reconnecting WebSocket and wire the audio bridge.
     autoStopFiredRef.current = false;
     sessionIdRef.current = result.sessionId;
     resetConnection();
@@ -362,6 +388,7 @@ export function useRecording() {
     cancelStart,
     clearLines,
     confirmStart,
+    createMeetingAsync,
     requestStart,
     resetConnection,
     setBufferedCount,

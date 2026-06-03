@@ -100,16 +100,16 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [x] Sessions persist across app restarts without re-login — `auth_get_session` reads the keyring on mount; `App.tsx` calls `hydrate()` from the auth store.
   - [x] Log Out option available in settings — `apps/desktop/src/components/settings-sheet.tsx` Log out row clears keyring + opens AuthKit logout URL.
 - [ ] **US-09 — View my meeting history**
-  - [ ] History view lists all meetings for logged-in user, newest first
-  - [ ] Each entry shows title (auto-generated if blank), date, duration, participant count
-  - [ ] Clicking a meeting opens its transcript and summary (if available)
-  - [ ] List loads within 2 s for up to 100 meetings
-  - [ ] Empty state shown with helpful prompt when no meetings exist
+  - [x] History view lists all meetings for logged-in user, newest first — `apps/desktop/src/components/history-view.tsx` consumes `useMeetingsList` (`apps/desktop/src/hooks/use-meetings-list.ts`), which paginates `GET /meetings` newest-first via the backend's composite cursor.
+  - [x] Each entry shows title (auto-generated if blank), date, duration, participant count — `MeetingRow` falls back to "Untitled meeting" for blank titles, renders relative-day dates via `formatRelativeDate` (`apps/desktop/src/lib/format-date.ts`), reuses `formatDuration`, and shows `speakerCount` with the lucide `Users` icon.
+  - [x] Clicking a meeting opens its transcript and summary (if available) — row click → `useUiStore.openMeeting(id)` → `<MeetingDetailView/>` (`apps/desktop/src/components/meeting-detail-view.tsx`) renders persisted final segments via `useMeetingDetail`. Summary section is intentionally absent until Phase 3 / FR-3.10 lands.
+  - [ ] List loads within 2 s for up to 100 meetings — gated on a backend k6 / pytest-benchmark run against a seeded 100-meeting dataset; deferred to its own task.
+  - [x] Empty state shown with helpful prompt when no meetings exist — `<EmptyState/>` in `history-view.tsx` shows "No meetings yet" + a Start recording CTA that calls `goRecording()`.
 - [ ] **US-10 — Meeting transcript saved automatically**
   - [x] Each transcript line written to DB in real time as it arrives from STT (not only at meeting end) — finals only; interims live in memory. See `_persist_final_segment` in `backend/src/meeting_intelligence/api/transcript.py`.
   - [x] On stop, in-flight lines flushed and persisted before session marked complete — `_DRAIN_TIMEOUT_S` (2s) gives Deepgram's trailing finals time to land before `_stamp_meeting_completed` runs.
   - [x] Full transcript retrievable from DB after app restart — `GET /meetings/:id` returns `segments[]` ordered by `start_ms`.
-  - [ ] If app crashes mid-meeting, already-persisted lines retained and visible on next launch — gated on the desktop side (history view; US-09).
+  - [x] If app crashes mid-meeting, already-persisted lines retained and visible on next launch — backend persists each final segment in real time (`_persist_final_segment` in `backend/src/meeting_intelligence/api/transcript.py`), and the desktop now surfaces them via the History → Detail flow (`apps/desktop/src/components/history-view.tsx` → `apps/desktop/src/components/meeting-detail-view.tsx`). The crashed meeting will appear with whatever finals were persisted before the crash.
 - [ ] **US-11 — Audio recording archived**
   - [ ] At meeting end, raw audio compressed to MP3 (128 kbps) and uploaded to S3 asynchronously
   - [ ] Audio player available in meeting detail view once upload completes

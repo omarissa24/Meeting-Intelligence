@@ -24,8 +24,11 @@ from typing import Annotated, Any, cast
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from workos import AsyncWorkOSClient
 
+from meeting_intelligence.api.deps import get_session_factory
 from meeting_intelligence.auth.workos_provider import mint_dev_token
 from meeting_intelligence.config import Settings, get_settings
 
@@ -96,6 +99,9 @@ class TokenResponse(BaseModel):
 async def callback(
     code: str,
     workos: Annotated[AsyncWorkOSClient, Depends(get_workos_client)],
+    session_factory: Annotated[
+        async_sessionmaker[AsyncSession], Depends(get_session_factory)
+    ],
 ) -> TokenResponse:
     """Exchange the AuthKit `code` for an access+refresh token pair.
 
@@ -103,12 +109,42 @@ async def callback(
     these in the OS credential store. The HTTP body is intentionally
     JSON (not a redirect) so the desktop's loopback interceptor can
     parse it without re-following.
+
+    Side effect: provisions the local `users` row via `auth.upsert_user`
+    so subsequent authed requests (which only carry `sub` in the JWT —
+    AuthKit access tokens do not include `email`) can resolve the
+    caller via `auth.lookup_user_by_workos_id`.
     """
     try:
         result = await workos.user_management.authenticate_with_code(code=code)
     except Exception as exc:
         log.info("auth.callback_failed reason=%s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    workos_user_id = result.user.id
+    email = getattr(result.user, "email", None)
+    if not email:
+        # WorkOS guarantees email on User; surface clearly if it ever
+        # comes back missing rather than INSERT-ing NULL into a NOT NULL
+        # column and 500-ing the request.
+        log.info("auth.callback_missing_email workos_user_id=%s", workos_user_id)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="WorkOS user record missing email",
+        )
+
+    async with session_factory() as session:
+        try:
+            await session.execute(
+                text(
+                    "SELECT id FROM auth.upsert_user(:wid, :email, NULL)"
+                ),
+                {"wid": workos_user_id, "email": email},
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
     return TokenResponse(
         accessToken=result.access_token,

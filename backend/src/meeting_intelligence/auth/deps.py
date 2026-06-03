@@ -68,32 +68,63 @@ def _parse_org_id(raw: str | None) -> UUID | None:
 
 
 async def _resolve_user(session: AsyncSession, claims: AuthenticatedUser) -> User:
-    """Find-or-create the local users row via the SECURITY DEFINER upsert.
+    """Resolve the local users row from a verified token.
 
-    The function returns id+email+organization_id+workos_user_id. We
-    hydrate a detached `User` instance with those fields; the request
-    session re-binds the GUC and re-fetches if the route needs the
-    full row (it almost never does).
+    Two paths:
+      * `claims.email` is set (dev tokens, future SSO claims that carry
+        it) — call the SECURITY DEFINER upsert for find-or-create.
+      * `claims.email` is None (WorkOS AuthKit access tokens) — read by
+        `workos_user_id` only. Provisioning must already have happened
+        at `/auth/callback` time, where the email is available; if no
+        row matches we raise 401 so the desktop re-runs the login flow.
+
+    The detached `User` instance returned here is what `get_request_session`
+    binds the RLS GUC against; routes that need the live row re-fetch
+    through that session.
     """
-    result = await session.execute(
+    if claims.email is not None:
+        result = await session.execute(
+            text(
+                "SELECT id, email, organization_id, workos_user_id "
+                "FROM auth.upsert_user(:wid, :email, :org)"
+            ),
+            {
+                "wid": claims.user_id,
+                "email": claims.email,
+                "org": _parse_org_id(claims.organization_id),
+            },
+        )
+        row = result.one()
+        return User(
+            id=row.id,
+            email=row.email,
+            organization_id=row.organization_id,
+            workos_user_id=row.workos_user_id,
+        )
+
+    # No email on the token — the desktop's per-request path. The
+    # users row was provisioned at /auth/callback time. Use the
+    # SECURITY DEFINER lookup so the SELECT bypasses users-RLS (which
+    # we can't satisfy here because `app.current_user_id` isn't bound
+    # yet — that's exactly what we're trying to determine).
+    select_row = await session.execute(
         text(
             "SELECT id, email, organization_id, workos_user_id "
-            "FROM auth.upsert_user(:wid, :email, :org)"
+            "FROM auth.lookup_user_by_workos_id(:wid)"
         ),
-        {
-            "wid": claims.user_id,
-            "email": claims.email,
-            "org": _parse_org_id(claims.organization_id),
-        },
+        {"wid": claims.user_id},
     )
-    row = result.one()
-    user = User(
+    row = select_row.one_or_none()
+    if row is None:
+        raise TokenVerificationError(
+            "user not provisioned for this workos_user_id; sign in again"
+        )
+    return User(
         id=row.id,
         email=row.email,
         organization_id=row.organization_id,
         workos_user_id=row.workos_user_id,
     )
-    return user
 
 
 async def get_current_user(

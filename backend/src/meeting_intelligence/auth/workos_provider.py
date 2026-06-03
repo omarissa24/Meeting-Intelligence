@@ -39,6 +39,19 @@ def _default_jwks_url(client_id: str) -> str:
     return f"https://api.workos.com/sso/jwks/{client_id}"
 
 
+def _default_issuer(client_id: str) -> str:
+    """Issuer claim WorkOS AuthKit (User Management) puts on access tokens.
+
+    Each WorkOS client gets its own issuer URL of the form
+    `https://api.workos.com/user_management/<client_id>`, so the issuer
+    is fully determined by the client_id and we can derive it at boot
+    rather than asking operators to set a redundant env var. Override
+    via `WORKOS_JWT_ISSUER` only if WorkOS publishes a new issuer
+    convention.
+    """
+    return f"https://api.workos.com/user_management/{client_id}"
+
+
 class WorkOSAuthProvider(AuthProvider):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -102,12 +115,15 @@ class WorkOSAuthProvider(AuthProvider):
                     f"unknown signing key (kid={kid!r}): {exc2}"
                 ) from exc2
 
+        expected_issuer = self._settings.workos_jwt_issuer or _default_issuer(
+            self._settings.workos_client_id
+        )
         try:
             payload: dict[str, Any] = jwt.decode(
                 token,
                 signing_key,
                 algorithms=["RS256"],
-                issuer=self._settings.workos_jwt_issuer,
+                issuer=expected_issuer,
                 # AuthKit access tokens omit `aud`; we don't enforce it.
                 # `iss`, `exp`, and `nbf` cover the security-critical claims.
                 options={"require": ["exp", "iss"], "verify_aud": False},
@@ -167,13 +183,15 @@ def _user_from_payload(payload: dict[str, Any]) -> AuthenticatedUser:
     sub = payload.get("sub")
     if not isinstance(sub, str) or not sub:
         raise TokenVerificationError("token missing 'sub'")
+    # WorkOS AuthKit access tokens omit `email`. Dev tokens minted
+    # via /auth/dev-token DO carry it. Either is acceptable here —
+    # the local users row was created at /auth/callback time, and
+    # `_resolve_user` looks up by `workos_user_id` first.
     email = payload.get("email")
-    if not isinstance(email, str) or not email:
-        raise TokenVerificationError("token missing 'email'")
     org = payload.get("organization_id")
     return AuthenticatedUser(
         user_id=sub,
-        email=email,
+        email=email if isinstance(email, str) and email else None,
         organization_id=org if isinstance(org, str) and org else None,
     )
 

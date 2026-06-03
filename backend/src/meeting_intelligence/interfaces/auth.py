@@ -10,7 +10,12 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class AuthenticatedUser:
     user_id: str
-    email: str
+    # WorkOS AuthKit access tokens do NOT carry `email` — they only
+    # have `sub` (the workos_user_id). We capture the email at
+    # `/auth/callback` time (where the SDK gives us the User record)
+    # and provision the local users row there. Per-request bearers
+    # land here with email=None and resolve via `workos_user_id`.
+    email: str | None
     organization_id: str | None
 
 
