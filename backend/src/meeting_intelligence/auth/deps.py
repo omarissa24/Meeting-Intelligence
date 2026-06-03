@@ -114,16 +114,16 @@ async def _resolve_user(session: AsyncSession, claims: AuthenticatedUser) -> Use
         ),
         {"wid": claims.user_id},
     )
-    row = select_row.one_or_none()
-    if row is None:
+    lookup_row = select_row.one_or_none()
+    if lookup_row is None:
         raise TokenVerificationError(
             "user not provisioned for this workos_user_id; sign in again"
         )
     return User(
-        id=row.id,
-        email=row.email,
-        organization_id=row.organization_id,
-        workos_user_id=row.workos_user_id,
+        id=lookup_row.id,
+        email=lookup_row.email,
+        organization_id=lookup_row.organization_id,
+        workos_user_id=lookup_row.workos_user_id,
     )
 
 
