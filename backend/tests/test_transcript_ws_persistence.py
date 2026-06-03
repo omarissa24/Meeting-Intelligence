@@ -211,3 +211,64 @@ def test_ws_persists_finals_and_stamps_meeting(
     assert detail["durationSeconds"] is not None and detail["durationSeconds"] >= 0
     # speaker_count tracks distinct speaker ids; all probes use "probe".
     assert detail["speakerCount"] == 1
+
+
+# --- Phase 3 dispatch ----------------------------------------------------
+
+
+def test_ws_finalize_dispatches_summarise_task(
+    client_with_db: TestClient,
+    dev_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a clean WS close, the summarise task is dispatched.
+
+    Mirrors the audio-archive dispatch in the same `finally` block;
+    we monkeypatch `summarise_meeting.delay` so the test doesn't need
+    a real broker.
+    """
+    from meeting_intelligence.worker.tasks import summarise as summarise_module
+
+    captured: list[dict[str, str]] = []
+
+    def _capture_delay(**kwargs: str) -> object:
+        captured.append(kwargs)
+
+        class _StubAsyncResult:
+            id = "stub-task-id"
+
+        return _StubAsyncResult()
+
+    # Patch the .delay attribute. The dispatch code imports
+    # `summarise_meeting` from the same module path, so this
+    # intercepts the call regardless of how the WS handler imports it.
+    monkeypatch.setattr(
+        summarise_module.summarise_meeting, "delay", _capture_delay
+    )
+
+    tok = _token(dev_settings, sub="user_disp", email="d@test.dev")
+    created = client_with_db.post(
+        "/meetings",
+        json={"title": "dispatch test"},
+        headers={"Authorization": f"Bearer {tok}"},
+    ).json()
+    meeting_id = UUID(created["id"])
+
+    with client_with_db.websocket_connect(
+        f"/transcript/ws/{meeting_id}",
+        subprotocols=[f"bearer.{tok}"],
+    ) as ws:
+        ws.send_text(json.dumps(_hello(str(meeting_id))))
+        first = json.loads(ws.receive_text())
+        assert first["type"] == "session_started"
+        ws.send_text(json.dumps({"type": "client_bye", "sessionId": str(meeting_id)}))
+        for _ in range(40):
+            frame = json.loads(ws.receive_text())
+            if frame["type"] == "session_ended":
+                break
+
+    assert len(captured) == 1
+    assert captured[0]["meeting_id"] == str(meeting_id)
+    # user_id is the row id from auth.upsert_user; we don't assert
+    # the exact value, just that it's present and non-empty.
+    assert captured[0]["user_id"]

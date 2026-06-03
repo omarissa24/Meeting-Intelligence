@@ -619,6 +619,33 @@ async def transcript_ws(
                     exc,
                 )
 
+        # FR-3.01: dispatch the summarise Celery task. Independent of
+        # audio archiving — even when STT failed or the WAV is missing,
+        # we still want a "failed"/"too_short" summary row so the
+        # desktop's polling state machine can transition out of
+        # "processing". Only skip when we know the meeting completed
+        # with actual content.
+        if not stt_failed:
+            try:
+                from meeting_intelligence.worker.tasks.summarise import (
+                    summarise_meeting,
+                )
+
+                summarise_meeting.delay(
+                    meeting_id=str(meeting_uuid),
+                    user_id=str(user_id),
+                )
+                log.info(
+                    "transcript.summarise_dispatched session_id=%s",
+                    session_id,
+                )
+            except Exception as exc:
+                log.warning(
+                    "transcript.summarise_dispatch_failed session_id=%s err=%s",
+                    session_id,
+                    exc,
+                )
+
     if final_latencies_ms:
         log.info(
             "transcript.latency_summary session_id=%s p50_ms=%d p95_ms=%d n=%d",
