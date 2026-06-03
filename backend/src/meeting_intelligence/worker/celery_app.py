@@ -31,7 +31,10 @@ def _build_app() -> Celery:
         "meeting_intelligence",
         broker=broker_url,
         backend=broker_url,
-        include=["meeting_intelligence.worker.tasks.audio_archive"],
+        include=[
+            "meeting_intelligence.worker.tasks.audio_archive",
+            "meeting_intelligence.worker.tasks.summarise",
+        ],
     )
     app.conf.update(
         task_acks_late=True,
