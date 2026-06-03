@@ -21,6 +21,11 @@ dependencies = [
     # US-11 audio archive: Celery worker + S3 client.
     "celery[redis]>=5.4.0,<6",
     "aioboto3>=13.0.0,<14",
+    # Phase 3 LLM summarisation: Anthropic Claude SDK and LangGraph
+    # orchestration. We deliberately do NOT add `langchain-anthropic` —
+    # graph nodes call our `LLMProvider` ABC, never a vendor SDK directly.
+    "anthropic>=0.40.0,<1",
+    "langgraph>=0.2.50,<0.3",
 ]
 
 [build-system]
