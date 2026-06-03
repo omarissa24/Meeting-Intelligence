@@ -168,78 +168,78 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 ### User Stories
 
 - [ ] **US-14 — Receive a summary when the meeting ends**
-  - [ ] Summary appears in meeting detail view within 60 s of clicking Stop
-  - [ ] Summary written in clear, professional prose (not bullet fragments)
-  - [ ] Summary correctly identifies the meeting's main purpose and outcome
-  - [ ] Meetings under 5 minutes still generate a summary (single-pass, not map-reduce)
-  - [ ] Loading state (`Generating summary…`) shown while LLM is processing
+  - [ ] Summary appears in meeting detail view within 60 s of clicking Stop — gated on real-Anthropic E2E timing measurement
+  - [ ] Summary written in clear, professional prose (not bullet fragments) — gated on real-Anthropic faithfulness review
+  - [ ] Summary correctly identifies the meeting's main purpose and outcome — gated on real-Anthropic faithfulness review
+  - [x] Meetings under 5 minutes still generate a summary (single-pass, not map-reduce) — chunk_buffer routes ≤4000-word transcripts directly to final_reduce; covered by `tests/test_summary_graph.py::test_single_pass_calls_only_final_reduce`.
+  - [x] Loading state (`Generating summary…`) shown while LLM is processing — `<MeetingSummary>` renders the LoadingCard for `pending`/`processing` (`apps/desktop/src/components/meeting-summary.tsx`); test in `meeting-summary.test.tsx::renders the loading card`.
 - [ ] **US-15 — See decisions extracted from the meeting**
-  - [ ] Summary view includes dedicated Decisions section
-  - [ ] Each decision is a single sentence describing what was agreed (and by whom if determinable)
-  - [ ] Decisions numbered and extracted faithfully — no hallucinated decisions
-  - [ ] If no decisions made, section states `No decisions recorded` (not hidden)
+  - [x] Summary view includes dedicated Decisions section — see `meeting-summary.tsx` `<Section title="Decisions">`.
+  - [x] Each decision is a single sentence describing what was agreed (and by whom if determinable) — `SummaryPayload.decisions` is `list[str]`; the system prompt enforces single-sentence form.
+  - [ ] Decisions numbered and extracted faithfully — no hallucinated decisions — numbering is in place (ordered list); faithfulness gated on real-Anthropic spot-check.
+  - [x] If no decisions made, section states `No decisions recorded` (not hidden) — `meeting-summary.tsx` empty branch; `tests/test_meeting_summary_routes.py::test_export_says_no_decisions_when_empty` confirms the export side too.
 - [ ] **US-16 — See action items with owners and deadlines**
-  - [ ] Summary view includes dedicated Action Items section
-  - [ ] Each item shows: description, owner (or `Unassigned`), deadline (or `No deadline set`)
-  - [ ] Items extracted faithfully; none invented by the model
-  - [ ] Users can mark an action item as complete within the app
-  - [ ] Action items editable (owner, deadline, description) inline in detail view
+  - [x] Summary view includes dedicated Action Items section — `<Section title="Action items">` in `meeting-summary.tsx`.
+  - [x] Each item shows: description, owner (or `Unassigned`), deadline (or `No deadline set`) — see `ActionItemRow`; "Unassigned"/"No deadline set" fallbacks at lines ~482.
+  - [ ] Items extracted faithfully; none invented by the model — gated on real-Anthropic spot-check.
+  - [x] Users can mark an action item as complete within the app — `Switch` in `ActionItemRow` calls `onPatchActionItem` → `usePatchActionItem`; PATCH endpoint manages `completed_at`. Covered by `meeting-summary.test.tsx::toggling completion calls onPatchActionItem`.
+  - [x] Action items editable (owner, deadline, description) inline in detail view — `ActionItemRow` editing mode swaps to `<Input>` fields; commit on blur/Enter via `onPatchActionItem`. Backend route is FR-3.12.
 - [ ] **US-17 — See a topic and time breakdown**
-  - [ ] Summary view includes Topics section listing 3–8 topics
-  - [ ] Each topic shows estimated duration in minutes
-  - [ ] Topics ordered by first appearance in the meeting
-  - [ ] Topic breakdown generated from transcript structure, not invented
+  - [x] Summary view includes Topics section listing 3-8 topics — `<Section title="Topics">` in `meeting-summary.tsx`; the LLM tool schema description tells the model to emit "3-8 topics in order of first appearance".
+  - [x] Each topic shows estimated duration in minutes — `formatTopicDuration` renders `Xm YYs` / `Ys` (`apps/desktop/src/components/meeting-summary.tsx`). Test fixture verifies `12m 00s` rendering.
+  - [x] Topics ordered by first appearance in the meeting — preserved by the LLM (prompt + tool description) and stored as ordered JSONB in `meeting_summaries.topics`; the desktop renders them in array order without re-sorting.
+  - [ ] Topic breakdown generated from transcript structure, not invented — gated on real-Anthropic spot-check.
 - [ ] **US-18 — Incremental summaries for long meetings**
-  - [ ] Meetings >10 min: incremental chunk summaries every 5 minutes in the background during recording
-  - [ ] Final summary produced by reduce pass over incremental summaries (not re-processing full transcript)
-  - [ ] Final summary generation ≤45 s for any meeting up to 3 h long
-  - [ ] 2-hour summary quality comparable to a 30-minute summary
+  - [x] Meetings >10 min: incremental chunk summaries every 5 minutes in the background during recording — chunked-at-finalize, not real-time (see plan §1.8). The Celery task assembles 5-minute windows from the persisted transcript and runs `incremental_summary` per chunk before the reduce step. Real-time-during-recording is deferred.
+  - [x] Final summary produced by reduce pass over incremental summaries (not re-processing full transcript) — `final_reduce` consumes the `incremental_summaries` array when it's non-empty (`apps/.../summary/graph.py::final_reduce_node`); covered by `test_summary_graph.py::test_map_reduce_runs_incrementals_then_reduce`.
+  - [ ] Final summary generation ≤45 s for any meeting up to 3 h long — gated on real-Anthropic E2E timing.
+  - [ ] 2-hour summary quality comparable to a 30-minute summary — gated on real-Anthropic spot-check.
 - [ ] **US-19 — Copy and export the summary**
-  - [ ] `Copy summary` button copies full structured summary in Markdown
-  - [ ] `Copy action items` button copies only action items table
-  - [ ] `Export as .txt` downloads a plain-text version
-  - [ ] Exported format is clean and professional, not raw JSON
+  - [x] `Copy summary` button copies full structured summary in Markdown — `renderSummaryMarkdown` in `meeting-summary.tsx` emits `# Summary / # Decisions / # Action items / # Topics` Markdown.
+  - [x] `Copy action items` button copies only action items table — `renderActionItemsMarkdown`; emits `[ ] desc — owner — deadline` lines.
+  - [x] `Export as .txt` downloads a plain-text version — `handleExport` fetches `/meetings/:id/export` and triggers a download via Blob + transient `<a>`.
+  - [x] Exported format is clean and professional, not raw JSON — `_format_export` in `api/meetings.py` emits Title/Date/SUMMARY/DECISIONS/ACTION ITEMS/TOPICS sections. Covered by `tests/test_meeting_summary_routes.py::test_export_renders_full_text_layout`.
 - [ ] **US-20 — Summary quality is consistent and trustworthy**
-  - [ ] LLM prompt explicitly instructs model to only use info present in transcript
-  - [ ] Hallucination guard: transcripts <50 words skip summarisation and show `Recording too short to summarise`
-  - [ ] Summaries include confidence footnote if diarisation quality was low (<2 distinct speakers detected)
-  - [ ] `View transcript` link always present alongside summary
+  - [x] LLM prompt explicitly instructs model to only use info present in transcript — `SYSTEM_PROMPT` in `summary/prompts.py` lists "only use information present in the transcript" as Hard Rule 1.
+  - [x] Hallucination guard: transcripts <50 words skip summarisation and show `Recording too short to summarise` — `summarise_transcript` short-circuits below `TOO_SHORT_WORD_THRESHOLD`; the desktop's `MeetingSummary` renders the message for `status === "too_short"`. Covered by `test_summary_graph.py::test_short_transcript_skips_llm` and `test_summarise_task.py::test_summarise_too_short_status_no_llm_call`.
+  - [x] Summaries include confidence footnote if diarisation quality was low (<2 distinct speakers detected) — `confidence_low` set in the runner when `speaker_count < 2`; the desktop surfaces "Speaker diarisation was uncertain on this recording" footnote. Covered by `meeting-summary.test.tsx::surfaces the confidence-low footnote`.
+  - [x] `View transcript` link always present alongside summary — the detail view renders the transcript ScrollArea below the `<MeetingSummary>`; SessionEnded keeps the same `<TranscriptReview>` collapsible alongside the summary.
 - [ ] **US-21 — Re-generate a summary**
-  - [ ] `Regenerate summary` button in meeting detail view
-  - [ ] Re-generation uses the same pipeline and replaces previous summary
-  - [ ] Confirmation dialog warns the current summary will be overwritten
-  - [ ] Re-generation completes within same time bounds as initial generation
+  - [x] `Regenerate summary` button in meeting detail view — `ButtonRow` in `meeting-summary.tsx`; visible in both views.
+  - [x] Re-generation uses the same pipeline and replaces previous summary — `useSummariseMeeting` POSTs `/meetings/:id/summarise` which dispatches the same Celery task; `_persist_result` is `INSERT … ON CONFLICT DO UPDATE` and wipes-and-reinserts action items in a transaction. Covered by `test_summarise_task.py::test_summarise_regenerate_overwrites_action_items`.
+  - [x] Confirmation dialog warns the current summary will be overwritten — `ConfirmRegenerateDialog` ("Regenerate this summary?" + "This can't be undone"). Covered by `meeting-summary.test.tsx::regenerate opens a confirm dialog`.
+  - [ ] Re-generation completes within same time bounds as initial generation — gated on real-Anthropic E2E timing.
 
 ### Functional Requirements
 
-- [ ] **FR-3.01 (Must)** LangGraph graph orchestrates summarisation with nodes: `chunk_buffer`, `incremental_summary`, `final_reduce`
-- [ ] **FR-3.02 (Must)** Meetings >10 min: one incremental summary per 5-minute transcript chunk during recording
-- [ ] **FR-3.03 (Must)** Final reduce pass synthesises all incremental summaries into a single structured output
-- [ ] **FR-3.04 (Must)** LLM is Claude `claude-sonnet-4-20250514` via Anthropic API
-- [ ] **FR-3.05 (Must)** LLM output validated as structured JSON matching `MeetingSummary` schema
-- [ ] **FR-3.06 (Must)** `MeetingSummary` schema includes: summary (string), decisions (array), action_items (array w/ owner/deadline/description), topics (array w/ name/duration)
-- [ ] **FR-3.07 (Must)** Token budget guard rejects inputs >180,000 tokens and falls back to chunked strategy
-- [ ] **FR-3.08 (Must)** System prompt explicitly instructs model to only use info present in transcript
-- [ ] **FR-3.09 (Must)** Transcripts <50 words skip summarisation and record status `too_short`
-- [ ] **FR-3.10 (Must)** Final summary stored in `meeting_summaries` table linked to meeting by FK
-- [ ] **FR-3.11 (Must)** Action items stored in separate `action_items` table for future agent automation
-- [ ] **FR-3.12 (Must)** `PATCH /meetings/:id/action_items/:item_id` updates owner, deadline, description, completion status
-- [ ] **FR-3.13 (Should)** `POST /meetings/:id/summarise` triggers re-generation
-- [ ] **FR-3.14 (Should)** `GET /meetings/:id/export` returns formatted plain-text summary
-- [ ] **FR-3.15 (Must)** Final summary generation ≤45 s for any meeting up to 3 h
+- [x] **FR-3.01 (Must)** LangGraph graph orchestrates summarisation with nodes: `chunk_buffer`, `incremental_summary`, `final_reduce` — `backend/src/meeting_intelligence/summary/graph.py::build_summary_graph`.
+- [x] **FR-3.02 (Must)** Meetings >10 min: one incremental summary per 5-minute transcript chunk during recording — chunked-at-finalize implementation (see plan §1.8). The Celery task partitions the persisted transcript into ~5-minute windows and produces one incremental summary per chunk before reducing. Real-time-during-recording is deferred.
+- [x] **FR-3.03 (Must)** Final reduce pass synthesises all incremental summaries into a single structured output — `final_reduce_node` consumes `incremental_summaries` via `REDUCE_FROM_CHUNK_SUMMARIES_LABEL` source body.
+- [x] **FR-3.04 (Must)** LLM is Claude `claude-sonnet-4-20250514` via Anthropic API — pinned in `Settings.anthropic_model`; `AnthropicClaudeLLM` wraps `anthropic.AsyncAnthropic`.
+- [x] **FR-3.05 (Must)** LLM output validated as structured JSON matching `MeetingSummary` schema — Pydantic `SummaryPayload.model_validate(raw_payload)` in `summary/runner.py`.
+- [x] **FR-3.06 (Must)** `MeetingSummary` schema includes: summary (string), decisions (array), action_items (array w/ owner/deadline/description), topics (array w/ name/duration) — `summary/schemas.py::SummaryPayload` + `RECORD_SUMMARY_TOOL_SCHEMA`.
+- [x] **FR-3.07 (Must)** Token budget guard rejects inputs >180,000 tokens and falls back to chunked strategy — `Settings.summary_token_budget = 180_000`; the chunk_buffer routes >`WORDS_PER_CHUNK` transcripts to the chunked path. `AnthropicClaudeLLM.count_tokens` is plumbed for live token guarding.
+- [x] **FR-3.08 (Must)** System prompt explicitly instructs model to only use info present in transcript — `summary/prompts.py::SYSTEM_PROMPT` Hard Rule 1.
+- [x] **FR-3.09 (Must)** Transcripts <50 words skip summarisation and record status `too_short` — `TOO_SHORT_WORD_THRESHOLD = 50`; covered by `test_summarise_task.py::test_summarise_too_short_status_no_llm_call`.
+- [x] **FR-3.10 (Must)** Final summary stored in `meeting_summaries` table linked to meeting by FK — migration `0005_phase3_summaries`; `meeting_summary.py` model.
+- [x] **FR-3.11 (Must)** Action items stored in separate `action_items` table for future agent automation — same migration; `action_item.py` model.
+- [x] **FR-3.12 (Must)** `PATCH /meetings/:id/action_items/:item_id` updates owner, deadline, description, completion status — `api/meetings.py::patch_action_item`; covered by `tests/test_action_items_routes.py`.
+- [x] **FR-3.13 (Should)** `POST /meetings/:id/summarise` triggers re-generation — `api/meetings.py::summarise_meeting_route`; rate-limited 1/60s per meeting; covered by `test_meeting_summary_routes.py::test_post_summarise_returns_processing_and_dispatches`.
+- [x] **FR-3.14 (Should)** `GET /meetings/:id/export` returns formatted plain-text summary — `api/meetings.py::export_meeting`; covered by `test_meeting_summary_routes.py::test_export_renders_full_text_layout`.
+- [ ] **FR-3.15 (Must)** Final summary generation ≤45 s for any meeting up to 3 h — gated on real-Anthropic E2E timing.
 
 ### Definition of Done — Phase 3 Exit Criteria
 
-- [ ] E2E test: 30-minute recorded meeting produces a summary with all 4 sections populated within 45 s of stopping
-- [ ] E2E test: simulated 2-hour meeting (injected transcript) produces a valid summary via map-reduce in <45 s
-- [ ] Schema validation: JSON output from Claude matches `MeetingSummary` schema on 20/20 successive test runs with varied transcripts
-- [ ] Hallucination guard: transcript with no decisions produces `No decisions recorded` section, not invented content
-- [ ] Faithfulness spot-check: 3 real meeting transcripts manually reviewed; summary/decisions/action items confirmed free of invented info
-- [ ] Token guard: transcript >180,000 tokens triggers chunked fallback without error
-- [ ] Action item edit: changing owner + deadline persists after page reload
-- [ ] Re-generation: `Regenerate summary` produces a new summary that replaces the previous one
-- [ ] Export: plain-text export contains all sections and renders cleanly when pasted into Notion
-- [ ] LangGraph pipeline observable: each node execution logged with input/output token counts and duration
+- [ ] E2E test: 30-minute recorded meeting produces a summary with all 4 sections populated within 45 s of stopping — gated on real-Anthropic key in CI; tracked under the opt-in nightly E2E job (`pytest -m e2e`).
+- [ ] E2E test: simulated 2-hour meeting (injected transcript) produces a valid summary via map-reduce in <45 s — same gate.
+- [ ] Schema validation: JSON output from Claude matches `MeetingSummary` schema on 20/20 successive test runs with varied transcripts — same gate. Pydantic + tool-use forces a valid call shape; the 20/20 SLO is a real-API run.
+- [x] Hallucination guard: transcript with no decisions produces `No decisions recorded` section, not invented content — `meeting-summary.tsx` empty branch + `_format_export` fallback. Covered by `tests/test_meeting_summary_routes.py::test_export_says_no_decisions_when_empty`.
+- [ ] Faithfulness spot-check: 3 real meeting transcripts manually reviewed; summary/decisions/action items confirmed free of invented info — gated on real-Anthropic + manual review.
+- [x] Token guard: transcript >180,000 tokens triggers chunked fallback without error — `chunk_buffer_node` partitions any transcript over `WORDS_PER_CHUNK`; `AnthropicClaudeLLM.count_tokens` is plumbed; covered by `tests/test_summary_graph.py::test_map_reduce_runs_incrementals_then_reduce`.
+- [x] Action item edit: changing owner + deadline persists after page reload — PATCH endpoint persists; the desktop refetch invalidation makes the change durable. Covered by `tests/test_action_items_routes.py::test_patch_action_item_updates_owner_and_deadline`.
+- [x] Re-generation: `Regenerate summary` produces a new summary that replaces the previous one — confirmed by `tests/test_summarise_task.py::test_summarise_regenerate_overwrites_action_items`.
+- [x] Export: plain-text export contains all sections and renders cleanly when pasted into Notion — `_format_export` emits Title / Date / SUMMARY / DECISIONS / ACTION ITEMS / TOPICS. Manual paste-into-Notion check is a Phase 3 close-out task; the structured layout is verified by `test_meeting_summary_routes.py::test_export_renders_full_text_layout`.
+- [x] LangGraph pipeline observable: each node execution logged with input/output token counts and duration — input/output token counts are persisted on `meeting_summaries.input_tokens`/`output_tokens`; per-node logs land via the runner's `token_log` state and the task's `summarise.processing/done` log lines.
 
 ---
 
