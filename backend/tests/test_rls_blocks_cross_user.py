@@ -103,3 +103,88 @@ async def test_rls_rejects_cross_user_insert(
                 {"user_id": str(user_b)},
             )
             await as_a.commit()
+
+
+@pytest.mark.asyncio
+async def test_rls_isolates_meeting_summaries_per_user(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    """Phase 3: each user only sees their own meeting_summaries rows."""
+    async with db_session_factory() as seed:
+        user_a = await _seed_user(seed, f"a-{uuid.uuid4()}@example.com")
+        user_b = await _seed_user(seed, f"b-{uuid.uuid4()}@example.com")
+        meeting_a = await _seed_meeting(seed, user_a, "A's meeting")
+        meeting_b = await _seed_meeting(seed, user_b, "B's meeting")
+        await set_request_user(seed, user_a)
+        await seed.execute(
+            text(
+                "INSERT INTO meeting_summaries (meeting_id, user_id, status, summary) "
+                "VALUES (:m, :u, 'completed', :s)"
+            ),
+            {"m": str(meeting_a), "u": str(user_a), "s": "A summary"},
+        )
+        await set_request_user(seed, user_b)
+        await seed.execute(
+            text(
+                "INSERT INTO meeting_summaries (meeting_id, user_id, status, summary) "
+                "VALUES (:m, :u, 'completed', :s)"
+            ),
+            {"m": str(meeting_b), "u": str(user_b), "s": "B summary"},
+        )
+        await seed.commit()
+
+    async with db_session_factory() as as_a:
+        await set_request_user(as_a, user_a)
+        rows = (
+            await as_a.execute(text("SELECT summary FROM meeting_summaries"))
+        ).fetchall()
+        assert [r[0] for r in rows] == ["A summary"]
+
+    async with db_session_factory() as as_b:
+        await set_request_user(as_b, user_b)
+        rows = (
+            await as_b.execute(text("SELECT summary FROM meeting_summaries"))
+        ).fetchall()
+        assert [r[0] for r in rows] == ["B summary"]
+
+
+@pytest.mark.asyncio
+async def test_rls_isolates_action_items_per_user(
+    db_session_factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with db_session_factory() as seed:
+        user_a = await _seed_user(seed, f"a-{uuid.uuid4()}@example.com")
+        user_b = await _seed_user(seed, f"b-{uuid.uuid4()}@example.com")
+        meeting_a = await _seed_meeting(seed, user_a, "A's meeting")
+        meeting_b = await _seed_meeting(seed, user_b, "B's meeting")
+        await set_request_user(seed, user_a)
+        await seed.execute(
+            text(
+                "INSERT INTO action_items (meeting_id, user_id, description, order_index) "
+                "VALUES (:m, :u, 'A todo', 0)"
+            ),
+            {"m": str(meeting_a), "u": str(user_a)},
+        )
+        await set_request_user(seed, user_b)
+        await seed.execute(
+            text(
+                "INSERT INTO action_items (meeting_id, user_id, description, order_index) "
+                "VALUES (:m, :u, 'B todo', 0)"
+            ),
+            {"m": str(meeting_b), "u": str(user_b)},
+        )
+        await seed.commit()
+
+    async with db_session_factory() as as_a:
+        await set_request_user(as_a, user_a)
+        rows = (
+            await as_a.execute(text("SELECT description FROM action_items"))
+        ).fetchall()
+        assert [r[0] for r in rows] == ["A todo"]
+
+    async with db_session_factory() as as_b:
+        await set_request_user(as_b, user_b)
+        rows = (
+            await as_b.execute(text("SELECT description FROM action_items"))
+        ).fetchall()
+        assert [r[0] for r in rows] == ["B todo"]

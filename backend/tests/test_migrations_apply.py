@@ -13,11 +13,19 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-EXPECTED_TABLES = {"users", "meetings", "transcript_segments"}
+EXPECTED_TABLES = {
+    "users",
+    "meetings",
+    "transcript_segments",
+    "meeting_summaries",
+    "action_items",
+}
 EXPECTED_POLICIES = {
     "users_self_only",
     "meetings_owner_only",
     "transcript_segments_owner_only",
+    "meeting_summaries_owner_only",
+    "action_items_owner_only",
 }
 
 
