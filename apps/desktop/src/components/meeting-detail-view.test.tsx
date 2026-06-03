@@ -4,9 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { MeetingDetail } from "@meeting-intelligence/shared-types";
 
 const mockApiJson = vi.fn();
+const mockApiFetch = vi.fn();
 
 vi.mock("@/lib/api-client", () => ({
   apiJson: (...args: unknown[]) => mockApiJson(...args),
+  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
   ApiError: class ApiError extends Error {
     constructor(
       public readonly status: number,
@@ -31,6 +33,7 @@ function makeDetail(overrides: Partial<MeetingDetail> = {}): MeetingDetail {
     endedAt: "2026-06-03T15:42:00Z",
     durationSeconds: 2520,
     speakerCount: 2,
+    audioObjectKey: null,
     segments: [
       {
         id: "seg-1",
@@ -54,6 +57,7 @@ function renderWithQuery(ui: React.ReactElement) {
 
 beforeEach(() => {
   mockApiJson.mockReset();
+  mockApiFetch.mockReset();
 });
 
 afterEach(() => {
@@ -229,5 +233,145 @@ describe("MeetingDetailView — tag editing", () => {
     expect(screen.queryByText(/at most/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/characters or fewer/i)).not.toBeInTheDocument();
     expect(mockApiJson).toHaveBeenCalledTimes(1); // GET only
+  });
+});
+
+describe("MeetingDetailView — audio player (US-11)", () => {
+  it("shows the 'Preparing audio…' state while the encode is in flight", async () => {
+    // The encode-pending state requires `endedAt` to be within the
+    // 2-min budget — otherwise the parent treats a missing key as
+    // permanently-failed (cold-start gate). Stamp `endedAt` to "now"
+    // so the fresh-encode branch fires.
+    primeFetches(
+      makeDetail({
+        audioObjectKey: null,
+        endedAt: new Date(Date.now() - 1000).toISOString(),
+      }),
+    );
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    expect(await screen.findByText(/Preparing audio/i)).toBeInTheDocument();
+    // No <audio> rendered yet.
+    expect(document.querySelector("audio")).toBeNull();
+    // No /audio call issued — gated on audioObjectKey being non-null.
+    expect(
+      mockApiJson.mock.calls.find((c) =>
+        (c[0] as { path: string }).path.endsWith("/audio"),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("shows the neutral 'no archive' copy on cold-start when an old meeting has no audio", async () => {
+    // A meeting that ended hours ago (well past the 2-min encode
+    // budget) with no audio key on first paint must NOT read as
+    // "Audio archive failed" — we don't know whether that meeting was
+    // never encoded, or the user deleted it in a previous session.
+    primeFetches(
+      makeDetail({
+        audioObjectKey: null,
+        endedAt: "2026-06-03T15:42:00Z", // hours before the test runs
+      }),
+    );
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    expect(await screen.findByText(/No audio archive/i)).toBeInTheDocument();
+    expect(screen.queryByText(/archive failed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Preparing audio/i)).not.toBeInTheDocument();
+  });
+
+  it("shows 'Audio deleted' after the user deletes a previously-archived audio", async () => {
+    const detail = makeDetail({ audioObjectKey: "meetings/u/m.mp3" });
+    primeFetches(detail);
+    // 1) URL fetch for the initially-ready audio.
+    mockApiJson.mockResolvedValueOnce({
+      audioUrl: "http://test.invalid/storage/local/sig",
+      expiresAt: "2099-01-01T00:00:00Z",
+    });
+    // 2) Post-delete refetch returns the row with the key nulled.
+    mockApiJson.mockResolvedValue({ ...detail, audioObjectKey: null });
+    mockApiFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      text: () => Promise.resolve(""),
+    });
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    // Wait for the player to render the trigger (audio loaded).
+    const trigger = await screen.findByRole("button", { name: /Delete audio/i });
+    fireEvent.click(trigger);
+
+    const confirmBtns = await screen.findAllByRole("button", { name: /Delete audio/i });
+    const confirm = confirmBtns.find((b) => b.dataset.variant === "destructive");
+    fireEvent.click(confirm!);
+
+    // After the cache invalidation refetch lands, the player must show
+    // the "Audio deleted" branch — NOT the Preparing skeleton, which
+    // was the original bug (US-11 follow-up).
+    expect(await screen.findByText(/Audio deleted/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Preparing audio/i)).not.toBeInTheDocument();
+  });
+
+  it("renders the <audio> element once an archived MP3 exists", async () => {
+    const detail = makeDetail({ audioObjectKey: "meetings/u/m.mp3" });
+    primeFetches(detail);
+    // The player's useMeetingAudio fires a second apiJson call against
+    // GET /meetings/:id/audio. Layer the URL response on top of the
+    // detail mocks queued by primeFetches.
+    mockApiJson.mockResolvedValueOnce({
+      audioUrl: "http://test.invalid/storage/local/sig",
+      expiresAt: "2099-01-01T00:00:00Z",
+    });
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    // Audio element resolves once the URL fetch settles.
+    await waitFor(() => {
+      const audio = document.querySelector("audio");
+      expect(audio).not.toBeNull();
+      expect(audio?.getAttribute("src")).toBe("http://test.invalid/storage/local/sig");
+    });
+    expect(screen.getByRole("button", { name: /Delete audio/i })).toBeInTheDocument();
+  });
+
+  it("DELETEs the archive when the user confirms", async () => {
+    const detail = makeDetail({ audioObjectKey: "meetings/u/m.mp3" });
+    primeFetches(detail);
+    mockApiJson.mockResolvedValueOnce({
+      audioUrl: "http://test.invalid/storage/local/sig",
+      expiresAt: "2099-01-01T00:00:00Z",
+    });
+    // After confirm, the post-DELETE invalidation refetches the
+    // detail; return it without the audio key so the UI flips back.
+    mockApiJson.mockResolvedValue({ ...detail, audioObjectKey: null });
+    mockApiFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 204,
+      text: () => Promise.resolve(""),
+    });
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    // Wait for the player to render the trigger.
+    const trigger = await screen.findByRole("button", { name: /Delete audio/i });
+    fireEvent.click(trigger);
+
+    // Confirm dialog button shares the label; pick the destructive one.
+    const confirmBtns = await screen.findAllByRole("button", { name: /Delete audio/i });
+    const confirm = confirmBtns.find((b) => b.dataset.variant === "destructive");
+    expect(confirm).toBeTruthy();
+    fireEvent.click(confirm!);
+
+    await waitFor(() => {
+      const deleteCall = mockApiFetch.mock.calls.find(
+        (c) => (c[0] as { method?: string }).method === "DELETE",
+      );
+      expect(deleteCall).toBeTruthy();
+      expect((deleteCall![0] as { path: string }).path).toBe(
+        `/meetings/${MEETING_ID}/audio`,
+      );
+    });
   });
 });

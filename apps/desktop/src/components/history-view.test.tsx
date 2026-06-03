@@ -37,6 +37,7 @@ const sampleMeeting = (overrides: Partial<Meeting> = {}): Meeting => ({
   endedAt: "2026-06-03T15:42:00Z",
   durationSeconds: 2520,
   speakerCount: 3,
+  audioObjectKey: null,
   ...overrides,
 });
 

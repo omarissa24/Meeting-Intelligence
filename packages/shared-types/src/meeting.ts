@@ -53,3 +53,14 @@ export interface PatchMeetingRequest {
   title?: string | null;
   tags?: string[];
 }
+
+/**
+ * Pre-signed URL response for an archived meeting's audio. Mirrored
+ * from `MeetingAudioResponse` in `backend/.../api/meetings.py`. URL TTL
+ * is bounded by `audio_presigned_url_ttl_seconds` (default 1 h, FR-2.07);
+ * `expiresAt` is the wall-clock UTC moment the URL stops working.
+ */
+export interface MeetingAudioResponse {
+  audioUrl: string;
+  expiresAt: string;
+}

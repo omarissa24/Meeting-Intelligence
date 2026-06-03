@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowLeft, Users, X } from "lucide-react";
 import type { TranscriptSegment } from "@meeting-intelligence/shared-types";
 
+import { MeetingAudioPlayer, type AudioState } from "@/components/meeting-audio-player";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,6 +18,15 @@ import { formatDuration } from "@/lib/format-duration";
 import { speakerLabel } from "@/lib/speaker-label";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
+
+// Audio archive lifecycle (US-11): once a meeting transitions to
+// `completed`, the Celery task encodes the WAV → MP3 and writes
+// `audio_object_key`. We poll the detail every 5 s while we're still
+// waiting, and give up after 2 min so the player surfaces a clear
+// "couldn't be archived" message instead of spinning forever if the
+// worker died.
+const AUDIO_POLL_INTERVAL_MS = 5_000;
+const AUDIO_POLL_BUDGET_MS = 120_000;
 
 interface MeetingDetailViewProps {
   meetingId: string;
@@ -40,7 +50,114 @@ const FALLBACK_TITLE = "Untitled meeting";
  */
 export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
   const goHistory = useUiStore((s) => s.goHistory);
-  const query = useMeetingDetail(meetingId);
+
+  // Encode-pending budget: pinned to the first time we observed
+  // `completed && audioObjectKey === null`, so the 2 min cap doesn't
+  // reset on every refetch. Reset when the meeting id changes —
+  // navigating between meetings should re-evaluate from scratch.
+  const encodeStartRef = useRef<{ id: string; at: number } | null>(null);
+  const [encodeFailed, setEncodeFailed] = useState(false);
+
+  // True once we've observed `audioObjectKey` non-null for this mount
+  // — distinguishes "key just got nulled by DELETE" from "encode never
+  // produced a key yet". Without this, deleting an archive snaps the
+  // UI back to the Preparing skeleton because the parent can't tell
+  // those two states apart from the meeting row alone.
+  const sawAudioKeyRef = useRef(false);
+
+  // The polling decision is fed back into `useMeetingDetail` from a
+  // separate render: we observe the current `data`, set a state flag,
+  // and React Query picks up the new `refetchInterval` on the next
+  // render. Two-phase loop is fine because each transition is a
+  // monotonic step (off → on once, then on → off once the encode
+  // lands or the budget elapses).
+  const [pollEnabled, setPollEnabled] = useState(false);
+  const query = useMeetingDetail(meetingId, {
+    refetchIntervalMs: pollEnabled ? AUDIO_POLL_INTERVAL_MS : false,
+  });
+  const m = query.data;
+
+  // Cold-start gate: a meeting that ended >2 min ago with no audio key
+  // is no longer encoding (worker would've finished by now). Without
+  // this, opening an old meeting where the audio was previously
+  // deleted would trigger a fresh 2-min poll loop on every visit.
+  const endedRecently =
+    m?.endedAt != null &&
+    Date.now() - new Date(m.endedAt).getTime() < AUDIO_POLL_BUDGET_MS;
+
+  // Track whether we've ever seen an archived key during this mount.
+  // Survives across `query.data` identity changes (refetches) but
+  // resets when the user navigates to a different meeting.
+  if (m?.audioObjectKey) {
+    sawAudioKeyRef.current = true;
+  }
+
+  // Audio state machine — derived once, passed to the player. The
+  // player no longer guesses based on `audioObjectKey` alone.
+  //
+  // The four no-key branches are deliberately distinct:
+  //   - `deleted`: in-mount evidence that the key flipped non-null → null
+  //   - `failed-encode`: in-mount evidence that the encode budget elapsed
+  //   - `no-archive`: cold-start with no in-mount evidence either way —
+  //     could be a previous-session delete, a previous-session failure,
+  //     or a meeting that ended while the worker was offline. Copy is
+  //     deliberately neutral about cause.
+  //   - `pending`: meeting completed recently, encode is plausibly still
+  //     running (within the 2 min budget).
+  const audioState: AudioState = !m
+    ? "loading"
+    : m.status === "recording" || m.status === "pending"
+      ? "hidden"
+      : m.status === "failed"
+        ? "unavailable"
+        : m.audioObjectKey
+          ? "ready"
+          : sawAudioKeyRef.current
+            ? "deleted"
+            : encodeFailed
+              ? "failed-encode"
+              : !endedRecently
+                ? "no-archive"
+                : "pending";
+
+  const isPendingEncode = audioState === "pending";
+
+  useEffect(() => {
+    setPollEnabled(isPendingEncode);
+  }, [isPendingEncode]);
+
+  // Reset the encode-pending tracking when navigating between meetings.
+  useEffect(() => {
+    encodeStartRef.current = null;
+    sawAudioKeyRef.current = false;
+    setEncodeFailed(false);
+  }, [meetingId]);
+
+  // Stamp the first time we see the encode-pending state and trip the
+  // failure flag once the budget elapses. Effect (not render) so we
+  // don't loop on the state update.
+  useEffect(() => {
+    if (!isPendingEncode) {
+      encodeStartRef.current = null;
+      return;
+    }
+    const now = Date.now();
+    if (
+      encodeStartRef.current === null ||
+      encodeStartRef.current.id !== meetingId
+    ) {
+      encodeStartRef.current = { id: meetingId, at: now };
+    }
+    const elapsed = now - encodeStartRef.current.at;
+    if (elapsed >= AUDIO_POLL_BUDGET_MS) {
+      setEncodeFailed(true);
+      return;
+    }
+    const remaining = AUDIO_POLL_BUDGET_MS - elapsed;
+    const timer = window.setTimeout(() => setEncodeFailed(true), remaining);
+    return () => window.clearTimeout(timer);
+  }, [isPendingEncode, meetingId]);
+
   const update = useUpdateMeeting(meetingId);
 
   const headerMeta = useMemo(() => {
@@ -112,6 +229,10 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
           />
         ) : null}
       </header>
+
+      {query.data ? (
+        <MeetingAudioPlayer meeting={query.data} state={audioState} />
+      ) : null}
 
       <CardContent className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
         {query.isPending ? (
