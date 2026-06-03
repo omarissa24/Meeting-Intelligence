@@ -117,10 +117,10 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] Audio files stored under a path including workspace ID and meeting ID
   - [ ] User can delete a meeting's audio independently of the transcript
 - [ ] **US-12 — Name and tag a meeting**
-  - [ ] Meeting detail view has editable title field (default auto-generated)
-  - [ ] Title saved on blur or Enter
-  - [ ] Up to 10 freeform tags can be added/removed
-  - [ ] Tags searchable in the history list (full semantic search comes in Phase 4)
+  - [x] Meeting detail view has editable title field (default auto-generated) — `<EditableTitle/>` in `apps/desktop/src/components/meeting-detail-view.tsx` swaps from a quiet `<h2>` into an `<Input>` on focus; the read-only display still falls back to "Untitled meeting" when the stored title is null/blank.
+  - [x] Title saved on blur or Enter — `commit()` fires from `onBlur` and from `Enter` in `onKeyDown`; Escape reverts. Empty trimmed strings are a deliberate no-op (see `meeting-detail-view.tsx:169-181`).
+  - [x] Up to 10 freeform tags can be added/removed — `<EditableTagList/>` renders removable Badge chips with × buttons and an `Add tag…` input that accepts Enter/comma. Validation mirrors backend `_validate_tags` (max 10, max 32 chars, silent dedupe). Mutation goes through `useUpdateMeeting` (`apps/desktop/src/hooks/use-update-meeting.ts`) → `PATCH /meetings/:id`.
+  - [ ] Tags searchable in the history list (full semantic search comes in Phase 4) — deferred to Phase 4 / FR-4.05.
 - [ ] **US-13 — Data is private and secure**
   - [x] All API endpoints validate JWT and return 401 for unauthenticated requests — every authed route depends on `get_request_session`, which transitively depends on `get_current_user`; `tests/test_meetings_routes.py::test_*_requires_auth` covers the gate.
   - [x] DB queries scoped by user ID; no cross-user data leakage — RLS policies on `users`/`meetings`/`transcript_segments` keyed off `app.current_user_id`; `set_request_user` binds it per request. Cross-user 404 verified in `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting`.
