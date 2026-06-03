@@ -107,40 +107,6 @@ def _seed_summary_with_items(
     return asyncio.run(_do())
 
 
-def _resolve_user_id(
-    factory: async_sessionmaker[AsyncSession], email: str
-) -> UUID:
-    """Read the user.id provisioned by /auth/upsert at first auth."""
-
-    async def _do() -> UUID:
-        async with factory() as s:
-            # Bypassing RLS via auth.upsert_user-style admin query isn't
-            # available here; instead we rely on the fact that the
-            # bearer-token middleware already provisioned the row before
-            # the test seeded its summaries. The conftest's `app_user`
-            # role can read any user row only when scoped to itself,
-            # but for THIS row we know the request just created it.
-            # Instead, use a fresh GUC-set session keyed to whatever
-            # userrow exists with that email.
-            await set_request_user(s, uuid4())  # placeholder; we'll fall through
-            # Fallback: bypass RLS by lifting the session-level setting
-            # for this read only. We can do that via the SECURITY DEFINER
-            # function.
-            row = (
-                await s.execute(
-                    text("SELECT * FROM auth.lookup_user_by_workos_id(:wid)"),
-                    {"wid": email.split("@")[0]},  # sub == email-local
-                )
-            ).first()
-            if row is None:
-                raise AssertionError(
-                    f"User row for {email} not provisioned by middleware yet"
-                )
-            return UUID(str(row.id))
-
-    return asyncio.run(_do())
-
-
 def _create_meeting(
     client: TestClient, dev_settings: Settings, *, sub: str, email: str
 ) -> tuple[str, dict[str, Any]]:
@@ -153,45 +119,6 @@ def _create_meeting(
     )
     assert r.status_code == 201, r.text
     return auth, r.json()
-
-
-def _get_user_id_via_meeting(
-    factory: async_sessionmaker[AsyncSession], meeting_id: UUID
-) -> UUID:
-    """Read meetings.user_id for an existing meeting.
-
-    The seed helpers need user_id; the simplest path is to read it
-    back from the row we just created via the API. We do this via an
-    unscoped session by setting GUC to the meeting_id-derived owner.
-    Trick: read the row via the SECURITY DEFINER helper isn't
-    available, so we use the admin engine. But that's not exposed to
-    these tests; instead we go through a brief detour using the
-    Settings DEFINER pattern. Simpler: query meetings WHERE id=...
-    after setting GUC to a known seed user — that won't work either.
-
-    Cleanest: do this via a tiny SQL `SELECT user_id FROM meetings
-    WHERE id = ?` inside a session whose GUC we don't bother setting.
-    The `meetings_owner_only` policy will block it under FORCE RLS.
-    So we use the same pattern other tests use: the `users` table has
-    a SECURITY DEFINER function (auth.upsert_user / lookup_user_by_workos_id)
-    which can be called by app_user. Resolve user → look up meeting.
-    """
-
-    async def _do() -> UUID:
-        async with factory() as s:
-            # Try every active GUC sub from the test pool until one succeeds.
-            # In practice we know the meeting was just created by the
-            # subject we're testing, so set the GUC to that subject's
-            # user_id. We don't have it directly — solve by using the
-            # meetings PK trick: scan with each known seed.
-            #
-            # Real approach: read the meeting row via a wide-open admin
-            # path. The simplest is to bind to the auth.upsert_user
-            # path: we know the owning user's email, so we can resolve
-            # back to user.id, then set GUC to it, then read the row.
-            raise NotImplementedError("see test usage")
-
-    return asyncio.run(_do())
 
 
 # -------------------------------------------------------------------------
