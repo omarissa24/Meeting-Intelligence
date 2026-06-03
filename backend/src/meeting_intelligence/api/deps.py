@@ -76,19 +76,66 @@ def _build_object_storage(settings: Settings) -> ObjectStorageProvider:
             access_key_id=settings.s3_access_key_id,
             secret_access_key=settings.s3_secret_access_key,
         )
-    # Local disk fallback. Settings auto-fill the signing key (process-
-    # scoped random) and root (system temp dir) when unset.
-    if not settings.local_storage_signing_key:
-        settings.local_storage_signing_key = secrets.token_urlsafe(32)
-    root = settings.local_object_storage_root or str(
-        Path(tempfile.gettempdir()) / "meeting-intelligence-objects"
-    )
+    # Local disk fallback. Settings auto-fill the signing key and root
+    # when unset. The key is persisted to a sibling file under the
+    # storage root so URLs minted in one process still verify after a
+    # restart (otherwise React Query's cached audioUrl 403s on the
+    # very next launch).
+    root = Path(_resolve_local_root(settings))
+    signing_key = ensure_local_signing_key(settings, root)
     base_url = "http://localhost:8000/storage/local"
     return LocalDiskObjectStorage(
-        root=root,
-        signing_key=settings.local_storage_signing_key,
+        root=str(root),
+        signing_key=signing_key,
         base_url=base_url,
     )
+
+
+def _resolve_local_root(settings: Settings) -> str:
+    return settings.local_object_storage_root or str(
+        Path(tempfile.gettempdir()) / "meeting-intelligence-objects"
+    )
+
+
+def ensure_local_signing_key(settings: Settings, root: Path) -> str:
+    """Populate `settings.local_storage_signing_key` if empty.
+
+    Reuses a previously persisted dev key under `<root>/.signing-key`
+    when present; otherwise generates one and writes it. Production
+    deployments configure the key via env and never hit this helper
+    (they also use `OBJECT_STORAGE_BACKEND=s3`).
+
+    Safe to call from any callsite that needs the key — both the
+    storage factory and the dev download route call into this so
+    request order doesn't matter.
+    """
+    if settings.local_storage_signing_key:
+        return settings.local_storage_signing_key
+
+    root.mkdir(parents=True, exist_ok=True)
+    key_path = root / ".signing-key"
+    if key_path.exists():
+        existing = key_path.read_text().strip()
+        if existing:
+            settings.local_storage_signing_key = existing
+            return existing
+
+    fresh = secrets.token_urlsafe(32)
+    # Best-effort persistence; if the disk is read-only we still set
+    # the in-memory key so the current process works (URLs just won't
+    # survive a restart in that pathological case).
+    try:
+        tmp = key_path.with_suffix(".signing-key.tmp")
+        tmp.write_text(fresh)
+        tmp.replace(key_path)
+        try:
+            key_path.chmod(0o600)
+        except OSError:
+            pass
+    except OSError:
+        pass
+    settings.local_storage_signing_key = fresh
+    return fresh
 
 
 @lru_cache(maxsize=1)

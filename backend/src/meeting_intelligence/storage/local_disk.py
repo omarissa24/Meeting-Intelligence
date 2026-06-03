@@ -153,8 +153,14 @@ def verify_local_token(
         blob = base64.urlsafe_b64decode(token + padding)
     except Exception as exc:
         raise ValueError(f"malformed token: {exc}") from exc
-    body, _, sig = blob.rpartition(b".")
-    if not body or len(sig) != 32:
+    # Slice positionally — the signature is a fixed 32-byte HMAC digest
+    # and a 0x2e (".") inside the digest happens ~1 in 8 mints. Using
+    # rpartition would split on that internal dot and corrupt the body.
+    if len(blob) < 33 or blob[-33:-32] != b".":
+        raise ValueError("malformed token")
+    body = blob[:-33]
+    sig = blob[-32:]
+    if not body:
         raise ValueError("malformed token")
     expected = hmac.new(signing_key, body, hashlib.sha256).digest()
     if not hmac.compare_digest(sig, expected):

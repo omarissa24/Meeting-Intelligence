@@ -99,3 +99,19 @@ def test_token_wrong_key_rejected() -> None:
     token = mint_local_token("k", int(time.time()) + 60, b"x" * 48)
     with pytest.raises(ValueError, match="bad signature"):
         verify_local_token(token, b"y" * 48)
+
+
+def test_token_with_dot_byte_in_signature_round_trips() -> None:
+    """Regression: HMAC digest may contain 0x2e (".") at any byte
+    position. The verifier must locate the separator at -33 positionally,
+    not via `rpartition(b".")` — otherwise it splits on the internal dot
+    and rejects valid tokens roughly 1 mint in 8.
+    """
+    sig_key = b"x" * 48
+    # exp=1780000004 with key="meetings/u/m.mp3" produces an HMAC sig
+    # containing 0x2e. Found by exhaustive search; pinned for stability.
+    expires_at = 1_780_000_004
+    token = mint_local_token("meetings/u/m.mp3", expires_at, sig_key)
+    key, exp = verify_local_token(token, sig_key, now=expires_at - 1)
+    assert key == "meetings/u/m.mp3"
+    assert exp == expires_at

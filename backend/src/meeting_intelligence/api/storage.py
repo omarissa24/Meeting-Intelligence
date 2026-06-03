@@ -30,17 +30,6 @@ router = APIRouter(prefix="/storage/local", tags=["storage"])
 log = logging.getLogger("meeting_intelligence.storage.local")
 
 
-def _resolve_signing_key(settings: Settings) -> bytes:
-    if not settings.local_storage_signing_key:
-        # Should never happen at request time — `get_object_storage`
-        # populates this. Defensive 503 keeps the failure mode legible.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="local storage signing key not configured",
-        )
-    return settings.local_storage_signing_key.encode()
-
-
 def _resolve_root(settings: Settings) -> Path:
     import tempfile
 
@@ -48,6 +37,20 @@ def _resolve_root(settings: Settings) -> Path:
         Path(tempfile.gettempdir()) / "meeting-intelligence-objects"
     )
     return Path(root)
+
+
+def _resolve_signing_key(settings: Settings) -> bytes:
+    """Hydrate the persisted dev signing key.
+
+    Tokens minted in a previous process must still verify after a
+    restart, so the key lives under `<root>/.signing-key` rather than
+    being a process-scoped random. Imported from `api.deps` lazily
+    (avoid circular import: deps imports storage too).
+    """
+    from meeting_intelligence.api.deps import ensure_local_signing_key
+
+    key = ensure_local_signing_key(settings, _resolve_root(settings))
+    return key.encode()
 
 
 @router.get("/{token}")
