@@ -115,7 +115,13 @@ def _seed_completed_summary(
     """Seed a completed summary + optional action_items for export tests."""
     import json
 
-    decisions_json = json.dumps(decisions or ["Approve plan."])
+    # Explicit `is None` check so callers can pass `decisions=[]` to
+    # exercise the empty-list path. `decisions or [...]` would silently
+    # fall through to the default for an empty list, producing surprising
+    # seed state that diverges from what the test claimed.
+    if decisions is None:
+        decisions = ["Approve plan."]
+    decisions_json = json.dumps(decisions)
     if topics_json is None:
         topics_json = (
             '[{"name": "Topic A", "duration_seconds": 600},'
