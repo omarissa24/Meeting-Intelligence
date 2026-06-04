@@ -385,13 +385,39 @@ def summarise_meeting(
     user_uuid = UUID(user_id)
     llm = get_llm_provider()
     try:
-        return asyncio.run(
+        status = asyncio.run(
             _do_summarise(
                 meeting_id=meeting_uuid,
                 user_id=user_uuid,
                 llm=llm,  # type: ignore[arg-type]
             )
         )
+        # Phase 4 tail-chain: kick off embeddings for search after the
+        # summary row commits. Only on success — there's no point
+        # embedding a meeting whose summarisation failed/was too short
+        # (search will skip it via `embedding IS NULL` either way, but
+        # we save a round-trip). Best-effort: a broker hiccup here
+        # doesn't fail the summarise task.
+        if status == "completed":
+            try:
+                # Local import dodges any circular-import concerns at
+                # worker boot: embed.py imports from this package via
+                # `meeting_intelligence.worker.celery_app`.
+                from meeting_intelligence.worker.tasks.embed import (
+                    embed_meeting_segments,
+                )
+
+                embed_meeting_segments.delay(
+                    meeting_id=meeting_id,
+                    user_id=user_id,
+                )
+            except Exception as exc:  # pragma: no cover — broker error path
+                log.warning(
+                    "summarise.embed_dispatch_failed meeting_id=%s err=%s",
+                    meeting_id,
+                    exc,
+                )
+        return status
     except SummariseRetryable as exc:
         log.warning(
             "summarise.transient_failure meeting_id=%s err=%s",

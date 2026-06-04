@@ -125,6 +125,74 @@ def test_list_meetings_paginates_newest_first(
     assert body2["nextCursor"] is None
 
 
+def test_list_meetings_filters_by_tag(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    """Phase 4 / FR-4.05: tag filter narrows the list. Cursor is unchanged."""
+    auth = _bearer(dev_settings, email="filter@test.dev", sub="user_filter")
+    # Create three meetings with different tag sets.
+    a = client.post(
+        "/meetings",
+        json={"title": "Finance", "tags": ["finance"]},
+        headers={"Authorization": auth},
+    ).json()
+    b = client.post(
+        "/meetings",
+        json={"title": "Product", "tags": ["product"]},
+        headers={"Authorization": auth},
+    ).json()
+    c = client.post(
+        "/meetings",
+        json={"title": "Mixed", "tags": ["finance", "ops"]},
+        headers={"Authorization": auth},
+    ).json()
+    _ = (a, b, c)
+
+    # No filter → all three present.
+    r = client.get("/meetings", headers={"Authorization": auth})
+    assert r.status_code == 200
+    titles = {m["title"] for m in r.json()["items"]}
+    assert titles == {"Finance", "Product", "Mixed"}
+
+    # Filter by `finance` → Finance + Mixed.
+    r = client.get("/meetings?tags=finance", headers={"Authorization": auth})
+    assert r.status_code == 200
+    titles = {m["title"] for m in r.json()["items"]}
+    assert titles == {"Finance", "Mixed"}
+
+    # Filter by both `ops` and `product` (overlap, not all) → Mixed + Product.
+    r = client.get(
+        "/meetings?tags=ops&tags=product", headers={"Authorization": auth}
+    )
+    assert r.status_code == 200
+    titles = {m["title"] for m in r.json()["items"]}
+    assert titles == {"Mixed", "Product"}
+
+
+def test_list_meetings_accepts_filter_params_without_error(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    """Sanity that the new filter params parse and don't 5xx.
+
+    The actual SQL semantics are covered by the search route tests
+    (which seed real durations / dates / tags into the test DB).
+    Here we only check that the route accepts the params and returns
+    the empty-list shape when nothing matches.
+    """
+    auth = _bearer(dev_settings, email="qparams@test.dev", sub="user_qparams")
+    r = client.get(
+        "/meetings"
+        "?date_start=2025-01-01"
+        "&date_end=2025-12-31"
+        "&duration_min_seconds=60"
+        "&duration_max_seconds=86400"
+        "&tags=alpha&tags=beta",
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == []
+
+
 def test_patch_meeting_updates_title_and_tags(
     client: TestClient, dev_settings: Settings
 ) -> None:

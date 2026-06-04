@@ -153,3 +153,47 @@ export interface MeetingAudioResponse {
   audioUrl: string;
   expiresAt: string;
 }
+
+/**
+ * Phase-4 history filters (US-23 / FR-4.05). All fields are optional;
+ * `tags` is empty when no tag filter is active. The same shape is used
+ * for both the filtered `GET /meetings` listing and `POST /search` so
+ * the UI can pass one filter object to both hooks.
+ *
+ * Date strings are ISO 8601 calendar dates (`YYYY-MM-DD`); the backend
+ * treats `dateEnd` as inclusive and converts to `< dateEnd + 1 day`
+ * internally.
+ */
+export interface MeetingFilters {
+  dateStart?: string | null;
+  dateEnd?: string | null;
+  durationMinSeconds?: number | null;
+  durationMaxSeconds?: number | null;
+  tags?: string[];
+}
+
+/**
+ * Phase-4 semantic search request body (US-22 / FR-4.03). `limit` is
+ * capped at 50 server-side; the desktop sends `10` by default.
+ */
+export interface SearchRequest extends MeetingFilters {
+  query: string;
+  limit?: number;
+}
+
+/** One ranked hit returned by `POST /search`. `score` is `1 - cosine_distance`. */
+export interface SearchHit {
+  meetingId: string;
+  meetingTitle: string | null;
+  meetingStartedAt: string | null;
+  segmentId: string;
+  segmentText: string;
+  segmentStartMs: number;
+  segmentEndMs: number;
+  speakerId: string | null;
+  score: number;
+}
+
+export interface SearchResponse {
+  items: SearchHit[];
+}

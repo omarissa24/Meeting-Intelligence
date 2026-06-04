@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # External providers
     deepgram_api_key: str | None = None
     anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
 
     # STT selection. "echo" routes through InMemoryEchoSTT (default, no key
     # required); "deepgram" routes through DeepgramNovaSTT and requires
@@ -79,6 +80,17 @@ class Settings(BaseSettings):
     # context window is larger; we pad below the limit so reduce-pass
     # reasoning has headroom.
     summary_token_budget: int = 180_000
+
+    # Phase 4 semantic search. "fake" routes through
+    # InMemoryFakeEmbeddingProvider (deterministic SHA256-seeded vectors);
+    # "openai" routes through OpenAIEmbeddingProvider and requires
+    # openai_api_key. Tests stay on "fake" so a leaked OPENAI_API_KEY in
+    # CI doesn't accidentally bill real OpenAI calls.
+    embedding_provider: Literal["fake", "openai"] = "fake"
+    # FR-4.02 fixes the dimension at 1536; this is the OpenAI model that
+    # natively returns that size. Override only if a successor in the
+    # same family ships at the same dim.
+    embedding_model: str = "text-embedding-3-small"
 
     # Auth
     workos_api_key: str | None = None

@@ -53,6 +53,8 @@ const FALLBACK_TITLE = "Untitled meeting";
  */
 export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
   const goHistory = useUiStore((s) => s.goHistory);
+  const pendingSegmentStartMs = useUiStore((s) => s.pendingSegmentStartMs);
+  const consumePendingSegment = useUiStore((s) => s.consumePendingSegment);
 
   // Encode-pending budget: pinned to the first time we observed
   // `completed && audioObjectKey === null`, so the 2 min cap doesn't
@@ -271,7 +273,25 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
           <ScrollArea className="h-full">
             <ol className="flex flex-col gap-3 px-6 py-5">
               {query.data.segments.map((seg) => (
-                <SegmentItem key={seg.id} segment={seg} />
+                <SegmentItem
+                  key={seg.id}
+                  segment={seg}
+                  isHighlighted={seg.startMs === pendingSegmentStartMs}
+                  onMounted={
+                    seg.startMs === pendingSegmentStartMs
+                      ? (el) => {
+                          // Scroll into view once the row mounts, then
+                          // clear the ui-store flag so a re-render
+                          // doesn't snap back if the user scrolls away.
+                          el.scrollIntoView({
+                            behavior: "smooth",
+                            block: "center",
+                          });
+                          consumePendingSegment();
+                        }
+                      : undefined
+                  }
+                />
               ))}
             </ol>
           </ScrollArea>
@@ -488,9 +508,36 @@ function EditableTagList({
   );
 }
 
-function SegmentItem({ segment }: { segment: TranscriptSegment }) {
+function SegmentItem({
+  segment,
+  isHighlighted,
+  onMounted,
+}: {
+  segment: TranscriptSegment;
+  isHighlighted?: boolean;
+  /**
+   * Called once with the rendered `<li>` element when it's the row
+   * being deep-linked to from a search hit. The handler is responsible
+   * for scrolling into view and clearing the deep-link flag.
+   */
+  onMounted?: (el: HTMLLIElement) => void;
+}) {
+  const ref = useRef<HTMLLIElement | null>(null);
+  useEffect(() => {
+    if (onMounted && ref.current) onMounted(ref.current);
+    // We deliberately want this to fire only once — when the matching
+    // row first mounts. Clearing the deep-link flag inside `onMounted`
+    // prevents repeats on subsequent re-renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
-    <li className="flex gap-3">
+    <li
+      ref={ref}
+      className={cn(
+        "flex gap-3 rounded-md transition-colors",
+        isHighlighted && "bg-primary/5 -mx-3 px-3 py-1.5",
+      )}
+    >
       {segment.speakerId ? (
         <Badge
           variant="secondary"

@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ArrowLeft, History as HistoryIcon, Mic, Users } from "lucide-react";
-import type { Meeting } from "@meeting-intelligence/shared-types";
+import type { Meeting, MeetingFilters } from "@meeting-intelligence/shared-types";
 
+import { HistoryFilters } from "@/components/history-filters";
+import { SearchInput } from "@/components/search-input";
+import { SearchResults } from "@/components/search-results";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,6 +18,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMeetingsList } from "@/hooks/use-meetings-list";
+import { useSearch } from "@/hooks/use-search";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatDuration } from "@/lib/format-duration";
 import { cn } from "@/lib/utils";
@@ -25,6 +29,13 @@ import { useUiStore } from "@/stores/ui-store";
  * lets the user dive into a single meeting (`openMeeting`) or return
  * to the recording surface (`goRecording`).
  *
+ * Phase 4 additions:
+ *   - Search input above the list. Non-empty query swaps the list for
+ *     `<SearchResults />` (US-22 / FR-4.03).
+ *   - Filter toolbar (`<HistoryFilters />`) fed from already-loaded
+ *     meetings. Filters compose with both list mode and search mode
+ *     (US-23 / FR-4.05).
+ *
  * Style intentionally mirrors `transcript-panel.tsx` and
  * `session-ended-view.tsx` — same Card frame, same display font,
  * same semantic tokens — so the design system stays coherent (CLAUDE.md
@@ -34,12 +45,18 @@ export function HistoryView() {
   const goRecording = useUiStore((s) => s.goRecording);
   const openMeeting = useUiStore((s) => s.openMeeting);
 
-  const query = useMeetingsList();
+  const [filters, setFilters] = useState<MeetingFilters>({});
+  const [query, setQuery] = useState("");
+
+  const listQuery = useMeetingsList(filters);
+  const searchQuery = useSearch(query, filters);
 
   const meetings: Meeting[] = useMemo(
-    () => query.data?.pages.flatMap((p) => p.items) ?? [],
-    [query.data],
+    () => listQuery.data?.pages.flatMap((p) => p.items) ?? [],
+    [listQuery.data],
   );
+
+  const isSearching = query.trim().length > 0;
 
   return (
     <Card className="flex h-full flex-col overflow-hidden">
@@ -56,18 +73,39 @@ export function HistoryView() {
           </Button>
           <h2 className="font-display text-xl font-normal tracking-tight">Meetings</h2>
         </div>
-        {meetings.length > 0 ? (
+        {!isSearching && meetings.length > 0 ? (
           <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
             {meetings.length} {meetings.length === 1 ? "meeting" : "meetings"}
           </span>
         ) : null}
       </header>
 
+      <div className="flex flex-col gap-2 px-6 pt-3">
+        <SearchInput value={query} onSubmit={setQuery} />
+      </div>
+
+      <HistoryFilters
+        filters={filters}
+        onChange={setFilters}
+        meetings={meetings}
+      />
+
       <CardContent className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
-        {query.isPending ? (
+        {isSearching ? (
+          <SearchResults
+            hits={searchQuery.data?.items ?? []}
+            query={query}
+            isPending={searchQuery.isPending || searchQuery.isFetching}
+            isError={searchQuery.isError}
+            onOpen={(meetingId, segmentStartMs) =>
+              openMeeting(meetingId, { initialSegmentStartMs: segmentStartMs })
+            }
+            onRetry={() => searchQuery.refetch()}
+          />
+        ) : listQuery.isPending ? (
           <ListSkeleton />
-        ) : query.isError ? (
-          <ErrorView onRetry={() => query.refetch()} />
+        ) : listQuery.isError ? (
+          <ErrorView onRetry={() => listQuery.refetch()} />
         ) : meetings.length === 0 ? (
           <EmptyState />
         ) : (
@@ -81,16 +119,16 @@ export function HistoryView() {
                 ))}
               </ol>
             </ScrollArea>
-            {query.hasNextPage ? (
+            {listQuery.hasNextPage ? (
               <div className="flex items-center justify-center border-t px-6 py-3">
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={query.isFetchingNextPage}
-                  onClick={() => query.fetchNextPage()}
+                  disabled={listQuery.isFetchingNextPage}
+                  onClick={() => listQuery.fetchNextPage()}
                 >
-                  {query.isFetchingNextPage ? "Loading…" : "Load more"}
+                  {listQuery.isFetchingNextPage ? "Loading…" : "Load more"}
                 </Button>
               </div>
             ) : null}

@@ -34,6 +34,7 @@ def _build_app() -> Celery:
         include=[
             "meeting_intelligence.worker.tasks.audio_archive",
             "meeting_intelligence.worker.tasks.summarise",
+            "meeting_intelligence.worker.tasks.embed",
         ],
     )
     app.conf.update(

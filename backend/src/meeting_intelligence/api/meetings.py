@@ -320,6 +320,11 @@ async def list_meetings(
     session: Annotated[AsyncSession, Depends(get_request_session)],
     cursor: str | None = None,
     limit: int = Query(DEFAULT_PAGE_LIMIT, ge=1, le=MAX_PAGE_LIMIT),
+    date_start: date | None = Query(default=None),
+    date_end: date | None = Query(default=None),
+    duration_min_seconds: int | None = Query(default=None, ge=0),
+    duration_max_seconds: int | None = Query(default=None, ge=0),
+    tags: list[str] = Query(default_factory=list),
 ) -> MeetingListResponse:
     """List meetings newest-first, paginated by `(started_at, id)` cursor.
 
@@ -327,8 +332,34 @@ async def list_meetings(
     fall to the end. The cursor is `(started_at, id)` of the last item
     of the previous page. We fetch `limit + 1` to detect "more pages
     exist" without a separate count query.
+
+    Phase 4 filters (US-23 / FR-4.05):
+
+      - `date_start` / `date_end` — calendar-day range, end inclusive
+        (compared as `< date_end + 1d` internally).
+      - `duration_min_seconds` / `duration_max_seconds` — clamps on
+        `meetings.duration_seconds`.
+      - `tags` — if non-empty, returns rows with at least one tag in
+        common (`tags && ARRAY[...]`).
+
+    Filters apply BEFORE the cursor; clients must pass identical
+    filter params on every page request. The cursor format is
+    unchanged.
     """
     stmt = select(Meeting)
+
+    if date_start is not None:
+        stmt = stmt.where(Meeting.started_at >= date_start)
+    if date_end is not None:
+        stmt = stmt.where(Meeting.started_at < (date_end + timedelta(days=1)))
+    if duration_min_seconds is not None:
+        stmt = stmt.where(Meeting.duration_seconds >= duration_min_seconds)
+    if duration_max_seconds is not None:
+        stmt = stmt.where(Meeting.duration_seconds <= duration_max_seconds)
+    if tags:
+        # Postgres array overlap. Index-served by the GIN index added
+        # in migration 0006.
+        stmt = stmt.where(Meeting.tags.op("&&")(tags))
 
     if cursor is not None:
         cur_started, cur_id = _decode_cursor(cursor)

@@ -21,17 +21,34 @@ export type AppView = "recording" | "history" | "detail";
 export interface UiStoreState {
   view: AppView;
   selectedMeetingId: string | null;
+  /**
+   * Phase 4 / US-22 deep-link from a search hit. When set, the
+   * meeting detail view should scroll its transcript to the segment
+   * starting at this offset, then call `consumePendingSegment` to
+   * clear the value (so a re-render doesn't keep snapping back).
+   */
+  pendingSegmentStartMs: number | null;
 
   goRecording: () => void;
   goHistory: () => void;
-  openMeeting: (id: string) => void;
+  openMeeting: (id: string, opts?: { initialSegmentStartMs?: number }) => void;
+  consumePendingSegment: () => void;
 }
 
 export const useUiStore = create<UiStoreState>()((set) => ({
   view: "recording",
   selectedMeetingId: null,
+  pendingSegmentStartMs: null,
 
-  goRecording: () => set({ view: "recording", selectedMeetingId: null }),
-  goHistory: () => set({ view: "history", selectedMeetingId: null }),
-  openMeeting: (id) => set({ view: "detail", selectedMeetingId: id }),
+  goRecording: () =>
+    set({ view: "recording", selectedMeetingId: null, pendingSegmentStartMs: null }),
+  goHistory: () =>
+    set({ view: "history", selectedMeetingId: null, pendingSegmentStartMs: null }),
+  openMeeting: (id, opts) =>
+    set({
+      view: "detail",
+      selectedMeetingId: id,
+      pendingSegmentStartMs: opts?.initialSegmentStartMs ?? null,
+    }),
+  consumePendingSegment: () => set({ pendingSegmentStartMs: null }),
 }));

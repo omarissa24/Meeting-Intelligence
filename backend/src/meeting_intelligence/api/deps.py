@@ -18,7 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from meeting_intelligence.auth.workos_provider import WorkOSAuthProvider
 from meeting_intelligence.config import Settings, get_settings
+from meeting_intelligence.embedding import (
+    InMemoryFakeEmbeddingProvider,
+    OpenAIEmbeddingProvider,
+)
 from meeting_intelligence.interfaces.auth import AuthProvider
+from meeting_intelligence.interfaces.embedding import EmbeddingProvider
 from meeting_intelligence.interfaces.llm import LLMProvider
 from meeting_intelligence.interfaces.storage import ObjectStorageProvider
 from meeting_intelligence.interfaces.stt import STTProvider
@@ -76,6 +81,35 @@ def _build_llm_provider() -> LLMProvider:
 
 def get_llm_provider() -> LLMProvider:
     return _build_llm_provider()
+
+
+# --- Embedding provider (Phase 4 semantic search) -------------------------
+
+
+@lru_cache(maxsize=1)
+def _build_embedding_provider() -> EmbeddingProvider:
+    """Construct the embedding provider once per process based on settings.
+
+    Default is `fake` so dev/CI work without an API key. Production
+    flips `EMBEDDING_PROVIDER=openai` and supplies `OPENAI_API_KEY`.
+    Tests that need to reset between cases can clear the cache via
+    `_build_embedding_provider.cache_clear()`.
+    """
+    settings = get_settings()
+    if settings.embedding_provider == "openai":
+        if not settings.openai_api_key:
+            raise RuntimeError(
+                "EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY to be set"
+            )
+        return OpenAIEmbeddingProvider(
+            api_key=settings.openai_api_key,
+            model=settings.embedding_model,
+        )
+    return InMemoryFakeEmbeddingProvider()
+
+
+def get_embedding_provider() -> EmbeddingProvider:
+    return _build_embedding_provider()
 
 
 # --- Auth provider --------------------------------------------------------

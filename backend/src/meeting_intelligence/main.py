@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from meeting_intelligence.api.auth import router as auth_router
 from meeting_intelligence.api.health import router as health_router
 from meeting_intelligence.api.meetings import router as meetings_router
+from meeting_intelligence.api.search import router as search_router
 from meeting_intelligence.api.storage import router as storage_router
 from meeting_intelligence.api.transcript import router as transcript_router
 from meeting_intelligence.config import get_settings
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(auth_router)
     app.include_router(meetings_router)
+    app.include_router(search_router)
     app.include_router(transcript_router)
     app.include_router(storage_router)
     return app
