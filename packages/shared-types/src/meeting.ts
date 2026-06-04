@@ -21,12 +21,7 @@ export type MeetingStatus = "pending" | "recording" | "completed" | "failed";
  *                or tool-use refusal). `error` carries the message.
  *   too_short  → transcript fell below the 50-word floor; no LLM call.
  */
-export type SummaryStatus =
-  | "pending"
-  | "processing"
-  | "completed"
-  | "failed"
-  | "too_short";
+export type SummaryStatus = "pending" | "processing" | "completed" | "failed" | "too_short";
 
 /** A single topic discussed during the meeting plus its estimated duration. */
 export interface Topic {
@@ -96,8 +91,10 @@ export interface Meeting {
 }
 
 /** Persisted transcript segment as returned by GET /meetings/:id. */
-export interface TranscriptSegment
-  extends Pick<TranscriptLine, "speakerId" | "text" | "startMs" | "endMs" | "isFinal"> {
+export interface TranscriptSegment extends Pick<
+  TranscriptLine,
+  "speakerId" | "text" | "startMs" | "endMs" | "isFinal"
+> {
   id: string;
 }
 
@@ -115,6 +112,14 @@ export interface MeetingDetail extends Meeting {
    * desktop polls while this is `"pending"` or `"processing"`.
    */
   summaryStatus: SummaryStatus;
+  /**
+   * US-26 / FR-4.10: per-meeting speaker rename overlay. Maps the raw
+   * STT label (e.g. `spk-0`) to the user-provided display name. Always
+   * present, possibly empty. Applied by `displaySpeakerLabel` at render
+   * time — segments themselves are unchanged so the original label stays
+   * auditable.
+   */
+  speakerAliases: Record<string, string>;
 }
 
 /** Body for PATCH /meetings/:id/action_items/:item_id (partial update). */
@@ -141,6 +146,17 @@ export interface CreateMeetingRequest {
 export interface PatchMeetingRequest {
   title?: string | null;
   tags?: string[];
+}
+
+/**
+ * Replace-all body for PUT /meetings/:id/speaker_aliases. The map fully
+ * replaces the stored set; missing keys clear those aliases. Empty /
+ * whitespace-only values are dropped server-side (they read as "clear
+ * this alias"). Validated server-side: max 32 entries, max 32 chars per
+ * display name.
+ */
+export interface PutSpeakerAliasesRequest {
+  aliases: Record<string, string>;
 }
 
 /**

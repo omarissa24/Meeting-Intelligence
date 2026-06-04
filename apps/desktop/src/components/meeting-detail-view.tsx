@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowLeft, Users, X } from "lucide-react";
-import type { TranscriptSegment } from "@meeting-intelligence/shared-types";
+import type { SummaryStatus, TranscriptSegment } from "@meeting-intelligence/shared-types";
 
 import { MeetingAudioPlayer, type AudioState } from "@/components/meeting-audio-player";
 import { MeetingSummary } from "@/components/meeting-summary";
+import { ParticipantsSection } from "@/components/participants-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import { useSummariseMeeting } from "@/hooks/use-summarise-meeting";
 import { useUpdateMeeting } from "@/hooks/use-update-meeting";
 import { formatRelativeDate } from "@/lib/format-date";
 import { formatDuration } from "@/lib/format-duration";
-import { speakerLabel } from "@/lib/speaker-label";
+import { displaySpeakerLabel } from "@/lib/speaker-label";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
 
@@ -63,6 +64,16 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
   const encodeStartRef = useRef<{ id: string; at: number } | null>(null);
   const [encodeFailed, setEncodeFailed] = useState(false);
 
+  // Belt-and-braces guard for the matching backend defect: if the
+  // backend writes `meetings.status='failed'` but the summarise
+  // dispatch was skipped (pre-fix this happened on any
+  // STTProviderError), the desktop's polling loop would otherwise
+  // spin on `summaryStatus='pending'` forever. After the same 2-min
+  // budget we used for the audio-encode case, treat a meeting whose
+  // status is `failed` AND has no summary as a terminal failure.
+  const summaryStartRef = useRef<{ id: string; at: number } | null>(null);
+  const [summaryStuck, setSummaryStuck] = useState(false);
+
   // True once we've observed `audioObjectKey` non-null for this mount
   // — distinguishes "key just got nulled by DELETE" from "encode never
   // produced a key yet". Without this, deleting an archive snaps the
@@ -87,8 +98,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
   // this, opening an old meeting where the audio was previously
   // deleted would trigger a fresh 2-min poll loop on every visit.
   const endedRecently =
-    m?.endedAt != null &&
-    Date.now() - new Date(m.endedAt).getTime() < AUDIO_POLL_BUDGET_MS;
+    m?.endedAt != null && Date.now() - new Date(m.endedAt).getTime() < AUDIO_POLL_BUDGET_MS;
 
   // Track whether we've ever seen an archived key during this mount.
   // Survives across `query.data` identity changes (refetches) but
@@ -129,8 +139,14 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
   // Phase 3: poll while the LangGraph pipeline is still working too.
   // The same 5s/120s budget covers both — summary completion and
   // audio archive ride the same useMeetingDetail query.
-  const isPendingSummary =
-    m?.summaryStatus === "pending" || m?.summaryStatus === "processing";
+  const rawIsPendingSummary = m?.summaryStatus === "pending" || m?.summaryStatus === "processing";
+  // Suppress "still pending" once the failed-meeting budget elapses.
+  // The meeting itself is `failed` with no summary row — assume the
+  // backend never dispatched and treat as terminal so we stop polling
+  // and render the failure card instead of an infinite spinner.
+  const isPendingSummary = rawIsPendingSummary && !summaryStuck;
+  const effectiveSummaryStatus: SummaryStatus | undefined =
+    summaryStuck && m?.summary == null ? "failed" : m?.summaryStatus;
   const shouldPoll = isPendingEncode || isPendingSummary;
 
   useEffect(() => {
@@ -142,6 +158,8 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
     encodeStartRef.current = null;
     sawAudioKeyRef.current = false;
     setEncodeFailed(false);
+    summaryStartRef.current = null;
+    setSummaryStuck(false);
   }, [meetingId]);
 
   // Stamp the first time we see the encode-pending state and trip the
@@ -153,10 +171,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
       return;
     }
     const now = Date.now();
-    if (
-      encodeStartRef.current === null ||
-      encodeStartRef.current.id !== meetingId
-    ) {
+    if (encodeStartRef.current === null || encodeStartRef.current.id !== meetingId) {
       encodeStartRef.current = { id: meetingId, at: now };
     }
     const elapsed = now - encodeStartRef.current.at;
@@ -168,6 +183,31 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
     const timer = window.setTimeout(() => setEncodeFailed(true), remaining);
     return () => window.clearTimeout(timer);
   }, [isPendingEncode, meetingId]);
+
+  // Same shape as the encode-pending budget: only arm the timer when
+  // the suspicious state is actually present (`meetings.status='failed'`
+  // AND no summary row), so a clean meeting never trips this and
+  // re-mounting after the timer fired doesn't re-run it.
+  const isFailedMeetingMissingSummary =
+    m?.status === "failed" && m?.summary == null && rawIsPendingSummary;
+  useEffect(() => {
+    if (!isFailedMeetingMissingSummary) {
+      summaryStartRef.current = null;
+      return;
+    }
+    const now = Date.now();
+    if (summaryStartRef.current === null || summaryStartRef.current.id !== meetingId) {
+      summaryStartRef.current = { id: meetingId, at: now };
+    }
+    const elapsed = now - summaryStartRef.current.at;
+    if (elapsed >= AUDIO_POLL_BUDGET_MS) {
+      setSummaryStuck(true);
+      return;
+    }
+    const remaining = AUDIO_POLL_BUDGET_MS - elapsed;
+    const timer = window.setTimeout(() => setSummaryStuck(true), remaining);
+    return () => window.clearTimeout(timer);
+  }, [isFailedMeetingMissingSummary, meetingId]);
 
   const update = useUpdateMeeting(meetingId);
   const summarise = useSummariseMeeting(meetingId);
@@ -243,21 +283,19 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
         ) : null}
       </header>
 
-      {query.data ? (
-        <MeetingAudioPlayer meeting={query.data} state={audioState} />
-      ) : null}
+      {query.data ? <MeetingAudioPlayer meeting={query.data} state={audioState} /> : null}
+
+      {query.data ? <ParticipantsSection meeting={query.data} /> : null}
 
       {query.data ? (
         <div className="border-b px-6 py-4">
           <MeetingSummary
             meetingId={meetingId}
             summary={query.data.summary}
-            status={query.data.summaryStatus}
+            status={effectiveSummaryStatus ?? query.data.summaryStatus}
             onRegenerate={() => summarise.mutate()}
             isRegenerating={summarise.isPending}
-            onPatchActionItem={(itemId, body) =>
-              patchActionItem.mutate({ itemId, body })
-            }
+            onPatchActionItem={(itemId, body) => patchActionItem.mutate({ itemId, body })}
           />
         </div>
       ) : null}
@@ -276,6 +314,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
                 <SegmentItem
                   key={seg.id}
                   segment={seg}
+                  speakerAliases={query.data.speakerAliases}
                   isHighlighted={seg.startMs === pendingSegmentStartMs}
                   onMounted={
                     seg.startMs === pendingSegmentStartMs
@@ -510,10 +549,12 @@ function EditableTagList({
 
 function SegmentItem({
   segment,
+  speakerAliases,
   isHighlighted,
   onMounted,
 }: {
   segment: TranscriptSegment;
+  speakerAliases: Record<string, string>;
   isHighlighted?: boolean;
   /**
    * Called once with the rendered `<li>` element when it's the row
@@ -543,7 +584,7 @@ function SegmentItem({
           variant="secondary"
           className="h-fit shrink-0 font-normal tabular-nums tracking-tight"
         >
-          {speakerLabel(segment.speakerId)}
+          {displaySpeakerLabel(segment.speakerId, speakerAliases)}
         </Badge>
       ) : null}
       <p className="leading-relaxed text-foreground">{segment.text}</p>

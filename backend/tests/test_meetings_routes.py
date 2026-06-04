@@ -264,3 +264,155 @@ def test_get_meeting_invalid_uuid_404(
     r = client.get("/meetings/not-a-uuid", headers={"Authorization": auth})
     # FastAPI returns 422 for an unparseable path UUID.
     assert r.status_code in (404, 422)
+
+
+# --- Speaker aliases (US-26 / FR-4.10 / FR-4.11) -----------------------------
+
+
+def test_put_speaker_aliases_replace_all(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    auth = _bearer(dev_settings, email="spk@test.dev", sub="user_spk")
+    created = client.post(
+        "/meetings", json={"title": "M"}, headers={"Authorization": auth}
+    ).json()
+    mid = created["id"]
+
+    # Empty by default.
+    r = client.get(f"/meetings/{mid}", headers={"Authorization": auth})
+    assert r.status_code == 200
+    assert r.json()["speakerAliases"] == {}
+
+    # PUT a couple of aliases.
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": {"spk-0": "Omar", "spk-1": "Priya"}},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["speakerAliases"] == {"spk-0": "Omar", "spk-1": "Priya"}
+
+    # Replace-all: PUT a new map drops the unmentioned keys.
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": {"spk-0": "Omar Issa"}},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 200
+    assert r.json()["speakerAliases"] == {"spk-0": "Omar Issa"}
+
+    # Empty body clears everything.
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": {}},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 200
+    assert r.json()["speakerAliases"] == {}
+
+
+def test_put_speaker_aliases_drops_blank_values(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    """Empty / whitespace display name = "clear this alias"."""
+    auth = _bearer(dev_settings, email="spk2@test.dev", sub="user_spk2")
+    created = client.post(
+        "/meetings", json={"title": "M"}, headers={"Authorization": auth}
+    ).json()
+    mid = created["id"]
+
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": {"spk-0": "Omar", "spk-1": "  ", "spk-2": ""}},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 200
+    assert r.json()["speakerAliases"] == {"spk-0": "Omar"}
+
+
+def test_put_speaker_aliases_validates_length(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    auth = _bearer(dev_settings, email="spk3@test.dev", sub="user_spk3")
+    created = client.post(
+        "/meetings", json={"title": "M"}, headers={"Authorization": auth}
+    ).json()
+    mid = created["id"]
+
+    too_long = "x" * 33
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": {"spk-0": too_long}},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 422
+
+
+def test_put_speaker_aliases_rejects_too_many(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    auth = _bearer(dev_settings, email="spk4@test.dev", sub="user_spk4")
+    created = client.post(
+        "/meetings", json={"title": "M"}, headers={"Authorization": auth}
+    ).json()
+    mid = created["id"]
+
+    aliases = {f"spk-{i}": f"name-{i}" for i in range(33)}
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": aliases},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 422
+
+
+def test_put_speaker_aliases_trims_whitespace(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    auth = _bearer(dev_settings, email="spk5@test.dev", sub="user_spk5")
+    created = client.post(
+        "/meetings", json={"title": "M"}, headers={"Authorization": auth}
+    ).json()
+    mid = created["id"]
+
+    r = client.put(
+        f"/meetings/{mid}/speaker_aliases",
+        json={"aliases": {"spk-0": "  Omar  "}},
+        headers={"Authorization": auth},
+    )
+    assert r.status_code == 200
+    assert r.json()["speakerAliases"] == {"spk-0": "Omar"}
+
+
+def test_put_speaker_aliases_rls_isolation(
+    client: TestClient, dev_settings: Settings
+) -> None:
+    auth_a = _bearer(dev_settings, email="spk_a@test.dev", sub="user_spk_a")
+    auth_b = _bearer(dev_settings, email="spk_b@test.dev", sub="user_spk_b")
+
+    a_meeting = client.post(
+        "/meetings", json={"title": "A's secret"}, headers={"Authorization": auth_a}
+    ).json()
+
+    # B can't read or write A's aliases — RLS makes the meeting invisible.
+    r = client.put(
+        f"/meetings/{a_meeting['id']}/speaker_aliases",
+        json={"aliases": {"spk-0": "hijack"}},
+        headers={"Authorization": auth_b},
+    )
+    assert r.status_code == 404
+
+    # A's aliases stay empty.
+    r = client.get(f"/meetings/{a_meeting['id']}", headers={"Authorization": auth_a})
+    assert r.status_code == 200
+    assert r.json()["speakerAliases"] == {}
+
+
+def test_speaker_aliases_requires_auth(client: TestClient) -> None:
+    # PUT without auth — 401, never even hits the meeting lookup.
+    r = client.put(
+        "/meetings/00000000-0000-0000-0000-000000000000/speaker_aliases",
+        json={"aliases": {}},
+    )
+    assert r.status_code == 401

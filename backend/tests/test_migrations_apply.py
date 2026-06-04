@@ -19,6 +19,7 @@ EXPECTED_TABLES = {
     "transcript_segments",
     "meeting_summaries",
     "action_items",
+    "speaker_aliases",
 }
 EXPECTED_POLICIES = {
     "users_self_only",
@@ -26,6 +27,7 @@ EXPECTED_POLICIES = {
     "transcript_segments_owner_only",
     "meeting_summaries_owner_only",
     "action_items_owner_only",
+    "speaker_aliases_owner_only",
 }
 
 

@@ -280,11 +280,11 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
   - [ ] Yellow/red triggers a one-line hint pointing the user to System Settings → Sound → Input
   - [ ] Subscribe pattern matches the existing `audio://chunk` / `audio://error` flow in `apps/desktop/src/lib/audio-bridge.ts`
   - [ ] Decoupled from the static-gain compensation; meter is purely informational
-- [ ] **US-26 — Meeting participants are listed**
-  - [ ] Meeting detail view has Participants section listing all detected speaker labels
-  - [ ] User can rename a speaker label to a real name (`Speaker 1` → `Omar`)
-  - [ ] Speaker name overrides applied retroactively to all transcript lines in that meeting
-  - [ ] Speaker names local to each meeting (no global learning in MVP)
+- [x] **US-26 — Meeting participants are listed**
+  - [x] Meeting detail view has Participants section listing all detected speaker labels — `<ParticipantsSection/>` (`apps/desktop/src/components/participants-section.tsx`) renders one input per distinct `speakerId` in segment-first-appearance order, mounted between tags and audio in `<MeetingDetailView/>`. Hidden when no segments carry a speaker id.
+  - [x] User can rename a speaker label to a real name (`Speaker 1` → `Omar`) — inline `<Input>` per row commits on blur/Enter via `useUpdateSpeakerAliases` (`apps/desktop/src/hooks/use-update-speaker-aliases.ts`) → `PUT /meetings/:id/speaker_aliases`. Validation mirrors backend (max 32 chars).
+  - [x] Speaker name overrides applied retroactively to all transcript lines in that meeting — render-time overlay via `displaySpeakerLabel(speakerId, aliases)` in `apps/desktop/src/lib/speaker-label.ts`; the segment chip in `<SegmentItem/>` consumes the alias map from `MeetingDetail.speakerAliases`. The `transcript_segments.speaker_id` column is intentionally untouched so the original STT label stays auditable.
+  - [x] Speaker names local to each meeting (no global learning in MVP) — `speaker_aliases` table is keyed `(meeting_id, original_label)` (migration `0007_speaker_aliases`); no cross-meeting lookup. RLS scoped via `app.current_user_id` per the standard pattern.
 - [ ] **US-27 — Dark mode support**
   - [ ] App detects OS dark/light mode preference on launch
   - [ ] All UI components render correctly in both modes with sufficient contrast (WCAG AA minimum)
@@ -309,8 +309,8 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **FR-4.07 (Must)** CI publishes signed update manifest and binary assets to update server on every release tag
 - [ ] **FR-4.08 (Must)** Settings schema persisted locally via Tauri store plugin and survives app updates
 - [ ] **FR-4.09 (Must)** Audio device selection enumerates available input devices via native audio API
-- [ ] **FR-4.10 (Should)** Speaker label overrides stored in `speaker_aliases` table linked to meeting_id + original_label
-- [ ] **FR-4.11 (Should)** Speaker aliases applied retroactively to `transcript_segments` on save
+- [x] **FR-4.10 (Should)** Speaker label overrides stored in `speaker_aliases` table linked to meeting_id + original_label — migration `0007_speaker_aliases` creates the table with `UNIQUE (meeting_id, original_label)`, FK CASCADE on `meetings`, denormalised `user_id` for RLS, and a `speaker_aliases_owner_only` policy keyed off `app.current_user_id`. ORM model at `db/models/speaker_alias.py`. Verified end-to-end by `tests/test_migrations_apply.py` (table + RLS + policy).
+- [x] **FR-4.11 (Should)** Speaker aliases applied retroactively to `transcript_segments` on save — render-time overlay rather than column mutation. `GET /meetings/:id` returns `speakerAliases: dict[str,str]` (from `MeetingDetailDTO`); the desktop's `displaySpeakerLabel` (`apps/desktop/src/lib/speaker-label.ts`) substitutes the alias when chipping every segment. PUT `/meetings/:id/speaker_aliases` is replace-all; rendering picks up the new map immediately via the `setQueryData` cache write in `useUpdateSpeakerAliases`. The original `speaker_id` stays pinned so audit / re-derivation remains possible.
 - [ ] **FR-4.12 (Must)** UI supports light + dark modes driven by OS preference with manual override
 - [ ] **FR-4.13 (Should)** Global keyboard shortcuts registered at OS level (not requiring window focus) for Record and Stop
 - [x] **FR-4.14 (Must)** History view supports server-side pagination, max 25 meetings per page — already shipped in Phase 2; Phase 4 extends `GET /meetings` with optional `date_start`, `date_end`, `duration_min_seconds`, `duration_max_seconds`, and `tags` query params (applied BEFORE the cursor). Cursor format unchanged. Covered by `tests/test_meetings_routes.py::test_list_meetings_filters_by_tag` + `test_list_meetings_accepts_filter_params_without_error`.

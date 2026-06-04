@@ -44,6 +44,7 @@ from meeting_intelligence.auth.deps import _resolve_user
 from meeting_intelligence.auth.workos_provider import TokenVerificationError
 from meeting_intelligence.config import get_settings
 from meeting_intelligence.db.models.meeting import Meeting
+from meeting_intelligence.db.models.meeting_summary import MeetingSummary
 from meeting_intelligence.db.models.transcript_segment import TranscriptSegment
 from meeting_intelligence.db.rls import set_request_user
 from meeting_intelligence.interfaces.auth import AuthProvider
@@ -619,13 +620,36 @@ async def transcript_ws(
                     exc,
                 )
 
-        # FR-3.01: dispatch the summarise Celery task. Independent of
-        # audio archiving — even when STT failed or the WAV is missing,
-        # we still want a "failed"/"too_short" summary row so the
-        # desktop's polling state machine can transition out of
-        # "processing". Only skip when we know the meeting completed
-        # with actual content.
-        if not stt_failed:
+        # FR-3.01: dispatch the summarise Celery task OR park a
+        # terminal failed-summary row directly.
+        #
+        # Rule: park a terminal `failed` row only when STT errored AND
+        # zero finals landed — the bug we hit (Deepgram crashed before
+        # any transcript was captured, and the desktop poll-spun
+        # forever waiting for a summary that would never come).
+        # Everything else dispatches summarise:
+        #
+        #   - clean close, finals present → normal completed summary
+        #   - clean close, no finals (e.g. bye-on-empty)  → too_short
+        #   - stt_failed BUT finals were persisted (Deepgram errored on
+        #     the trailing close handshake; we have 15 lines on disk)
+        #     → real summary, NOT silently skipped (was the pre-fix bug)
+        if stt_failed and final_line_count == 0:
+            failure_message = (
+                stt_failure_msg
+                or "Recording failed before any transcript was captured."
+            )
+            await _park_failed_summary(
+                session_factory,
+                user_id=user_id,
+                meeting_id=meeting_uuid,
+                error=failure_message,
+            )
+            log.info(
+                "transcript.summarise_skipped_failed_row_parked session_id=%s",
+                session_id,
+            )
+        else:
             try:
                 from meeting_intelligence.worker.tasks.summarise import (
                     summarise_meeting,
@@ -636,8 +660,10 @@ async def transcript_ws(
                     user_id=str(user_id),
                 )
                 log.info(
-                    "transcript.summarise_dispatched session_id=%s",
+                    "transcript.summarise_dispatched session_id=%s stt_failed=%s finals=%d",
                     session_id,
+                    stt_failed,
+                    final_line_count,
                 )
             except Exception as exc:
                 log.warning(
@@ -781,6 +807,54 @@ async def _stamp_meeting_completed(
     except Exception as exc:
         log.error(
             "transcript.stamp_failed meeting_id=%s err=%s",
+            meeting_id,
+            exc,
+        )
+
+
+async def _park_failed_summary(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    user_id: UUID,
+    meeting_id: UUID,
+    error: str,
+) -> None:
+    """Write a terminal `meeting_summaries` row when STT failed before
+    any transcript landed. Without this, the desktop reads
+    `summaryStatus="pending"` forever and the "Generating summary…"
+    spinner never resolves.
+
+    Idempotent against re-entry — if a row already exists (e.g. a
+    previous Regenerate attempt), update its status/error rather than
+    inserting a duplicate.
+    """
+    try:
+        async with session_factory() as session:
+            await set_request_user(session, user_id)
+            existing = (
+                await session.execute(
+                    select(MeetingSummary).where(MeetingSummary.meeting_id == meeting_id)
+                )
+            ).scalar_one_or_none()
+            now = datetime.now(UTC)
+            if existing is None:
+                session.add(
+                    MeetingSummary(
+                        meeting_id=meeting_id,
+                        user_id=user_id,
+                        status="failed",
+                        error=error,
+                        generated_at=now,
+                    )
+                )
+            else:
+                existing.status = "failed"
+                existing.error = error
+                existing.regenerated_at = now
+            await session.commit()
+    except Exception as exc:
+        log.error(
+            "transcript.park_failed_summary_failed meeting_id=%s err=%s",
             meeting_id,
             exc,
         )

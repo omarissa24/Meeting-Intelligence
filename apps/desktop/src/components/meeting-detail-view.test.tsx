@@ -36,6 +36,7 @@ function makeDetail(overrides: Partial<MeetingDetail> = {}): MeetingDetail {
     audioObjectKey: null,
     summary: null,
     summaryStatus: "pending",
+    speakerAliases: {},
     segments: [
       {
         id: "seg-1",
@@ -238,6 +239,183 @@ describe("MeetingDetailView — tag editing", () => {
   });
 });
 
+describe("MeetingDetailView — failed summary state (recovery fix)", () => {
+  it("renders the failure card when the backend parked a failed-summary row", async () => {
+    // Post-fix happy path for the "Deepgram errored before any final"
+    // case: backend wrote a meeting_summaries row with status='failed';
+    // the detail view should render the failure card, not the loader.
+    primeFetches(
+      makeDetail({
+        status: "failed",
+        summary: {
+          status: "failed",
+          summary: null,
+          decisions: [],
+          topics: [],
+          actionItems: [],
+          confidenceLow: false,
+          modelVersion: null,
+          inputTokens: null,
+          outputTokens: null,
+          error: "Recording failed before any transcript was captured.",
+          generatedAt: "2026-06-04T15:00:00Z",
+          regeneratedAt: null,
+        },
+        summaryStatus: "failed",
+      }),
+    );
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    // The MeetingSummary failed branch renders a "Couldn't generate"
+    // headline + Retry button (see meeting-summary.tsx). Either marker
+    // is enough to prove we're not stuck on the loading card.
+    expect(await screen.findByRole("button", { name: /Retry/i })).toBeInTheDocument();
+    expect(screen.queryByText(/Generating summary/i)).toBeNull();
+  });
+});
+
+describe("MeetingDetailView — participant rename (US-26)", () => {
+  it("renders one participant row per distinct speakerId in segment order", async () => {
+    primeFetches(
+      makeDetail({
+        speakerAliases: {},
+        segments: [
+          {
+            id: "s1",
+            speakerId: "spk-1",
+            text: "first appears second-numbered",
+            startMs: 0,
+            endMs: 1000,
+            isFinal: true,
+          },
+          {
+            id: "s2",
+            speakerId: "spk-0",
+            text: "appears later",
+            startMs: 1000,
+            endMs: 2000,
+            isFinal: true,
+          },
+          {
+            id: "s3",
+            speakerId: "spk-1",
+            text: "duplicate",
+            startMs: 2000,
+            endMs: 3000,
+            isFinal: true,
+          },
+        ],
+      }),
+    );
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    const inputs = await screen.findAllByPlaceholderText(/Speaker \d/);
+    expect(inputs).toHaveLength(2);
+    // Order matches first-appearance: spk-1 before spk-0.
+    expect((inputs[0] as HTMLInputElement).placeholder).toBe("Speaker 2");
+    expect((inputs[1] as HTMLInputElement).placeholder).toBe("Speaker 1");
+  });
+
+  it("commits a PUT and re-renders chips with the alias", async () => {
+    const detail = makeDetail({ speakerAliases: {} });
+    primeFetches(detail);
+    // Mutation response: detail with the alias applied.
+    mockApiJson.mockResolvedValueOnce({
+      ...detail,
+      speakerAliases: { "spk-0": "Omar" },
+    });
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    // Sanity: chip shows the default label before the rename.
+    expect(await screen.findByText("Speaker 1")).toBeInTheDocument();
+
+    const input = await screen.findByLabelText(/Rename Speaker 1/i);
+    fireEvent.change(input, { target: { value: "Omar" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => {
+      const putCall = mockApiJson.mock.calls.find(
+        (c) => (c[0] as { method?: string }).method === "PUT",
+      );
+      expect(putCall).toBeTruthy();
+      expect((putCall![0] as { path: string }).path).toBe(
+        `/meetings/${MEETING_ID}/speaker_aliases`,
+      );
+      expect((putCall![0] as { body: string }).body).toBe(
+        JSON.stringify({ aliases: { "spk-0": "Omar" } }),
+      );
+    });
+
+    // Chip flips to the alias once the cache update lands.
+    expect(await screen.findByText("Omar")).toBeInTheDocument();
+  });
+
+  it("clears the alias when the user blurs an empty input", async () => {
+    const detail = makeDetail({ speakerAliases: { "spk-0": "Omar" } });
+    primeFetches(detail);
+    mockApiJson.mockResolvedValueOnce({ ...detail, speakerAliases: {} });
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    const input = await screen.findByLabelText(/Rename Speaker 1/i);
+    expect((input as HTMLInputElement).value).toBe("Omar");
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      const putCall = mockApiJson.mock.calls.find(
+        (c) => (c[0] as { method?: string }).method === "PUT",
+      );
+      expect(putCall).toBeTruthy();
+      // Empty trimmed value drops the key from the replace-all map.
+      expect((putCall![0] as { body: string }).body).toBe(JSON.stringify({ aliases: {} }));
+    });
+  });
+
+  it("blocks names over 32 characters with an inline error", async () => {
+    primeFetches(makeDetail({ speakerAliases: {} }));
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    const input = await screen.findByLabelText(/Rename Speaker 1/i);
+    fireEvent.change(input, { target: { value: "x".repeat(33) } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByText(/32 characters or fewer/i)).toBeInTheDocument();
+    await waitFor(() => {
+      // Only the GET — no PUT issued.
+      expect(mockApiJson).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not render the section when no segments have speakerIds", async () => {
+    primeFetches(
+      makeDetail({
+        segments: [
+          {
+            id: "s1",
+            speakerId: null as unknown as string,
+            text: "no speaker",
+            startMs: 0,
+            endMs: 1000,
+            isFinal: true,
+          },
+        ],
+      }),
+    );
+
+    renderWithQuery(<MeetingDetailView meetingId={MEETING_ID} />);
+
+    // Wait for the title to appear so we know the detail loaded.
+    await screen.findByRole("button", { name: /Edit meeting title/i });
+    expect(screen.queryByTestId("participants-section")).toBeNull();
+  });
+});
+
 describe("MeetingDetailView — audio player (US-11)", () => {
   it("shows the 'Preparing audio…' state while the encode is in flight", async () => {
     // The encode-pending state requires `endedAt` to be within the
@@ -258,9 +436,7 @@ describe("MeetingDetailView — audio player (US-11)", () => {
     expect(document.querySelector("audio")).toBeNull();
     // No /audio call issued — gated on audioObjectKey being non-null.
     expect(
-      mockApiJson.mock.calls.find((c) =>
-        (c[0] as { path: string }).path.endsWith("/audio"),
-      ),
+      mockApiJson.mock.calls.find((c) => (c[0] as { path: string }).path.endsWith("/audio")),
     ).toBeUndefined();
   });
 
@@ -371,9 +547,7 @@ describe("MeetingDetailView — audio player (US-11)", () => {
         (c) => (c[0] as { method?: string }).method === "DELETE",
       );
       expect(deleteCall).toBeTruthy();
-      expect((deleteCall![0] as { path: string }).path).toBe(
-        `/meetings/${MEETING_ID}/audio`,
-      );
+      expect((deleteCall![0] as { path: string }).path).toBe(`/meetings/${MEETING_ID}/audio`);
     });
   });
 });

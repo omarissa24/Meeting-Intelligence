@@ -19,7 +19,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
-from sqlalchemy import bindparam, desc, select, tuple_
+from sqlalchemy import bindparam, delete, desc, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from meeting_intelligence.api.deps import get_object_storage
@@ -28,6 +28,7 @@ from meeting_intelligence.config import Settings, get_settings
 from meeting_intelligence.db.models.action_item import ActionItem
 from meeting_intelligence.db.models.meeting import Meeting
 from meeting_intelligence.db.models.meeting_summary import MeetingSummary
+from meeting_intelligence.db.models.speaker_alias import SpeakerAlias
 from meeting_intelligence.db.models.transcript_segment import TranscriptSegment
 from meeting_intelligence.db.models.user import User
 from meeting_intelligence.interfaces.storage import ObjectStorageProvider
@@ -40,6 +41,13 @@ MAX_TAGS = 10
 MAX_TAG_LENGTH = 32
 DEFAULT_PAGE_LIMIT = 25
 MAX_PAGE_LIMIT = 100
+
+# US-26 / FR-4.10: per-meeting speaker rename. The display name is the
+# user-provided string ("Omar"); we don't bound the original_label
+# because it's whatever the STT provider emits — matching the
+# transcript_segments.speaker_id column shape.
+MAX_SPEAKER_ALIASES = 32
+MAX_SPEAKER_DISPLAY_NAME_LENGTH = 32
 
 
 # --- DTOs --------------------------------------------------------------------
@@ -130,6 +138,22 @@ class MeetingDetailDTO(MeetingDTO):
     # task upserts, the row exists with status='processing' or later.
     summary: SummaryDTO | None = None
     summaryStatus: str = "pending"
+    # US-26 / FR-4.10: map of original STT label → user-provided display
+    # name. Always present, possibly empty. The desktop applies this as
+    # a render-time overlay on the chip; segments themselves are
+    # unmodified. Replace via PUT /meetings/:id/speaker_aliases.
+    speakerAliases: dict[str, str] = Field(default_factory=dict)
+
+
+class PutSpeakerAliasesRequest(_CamelModel):
+    """Replace-all body for PUT /meetings/:id/speaker_aliases.
+
+    `aliases` maps STT speaker label → display name. An empty map
+    clears every alias for the meeting; a missing key clears just
+    that alias. Empty / whitespace-only values are dropped silently.
+    """
+
+    aliases: dict[str, str] = Field(default_factory=dict)
 
 
 class PatchActionItemRequest(_CamelModel):
@@ -166,6 +190,42 @@ class MeetingAudioResponse(_CamelModel):
 
 
 # --- helpers -----------------------------------------------------------------
+
+
+def _validate_speaker_aliases(raw: dict[str, str]) -> dict[str, str]:
+    """Mirror of the desktop validation. Trims whitespace, drops empty
+    values silently (those represent "clear this alias"), refuses
+    display names over 32 chars and maps over 32 entries.
+    """
+    if len(raw) > MAX_SPEAKER_ALIASES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"max {MAX_SPEAKER_ALIASES} aliases",
+        )
+    cleaned: dict[str, str] = {}
+    for label, value in raw.items():
+        if not isinstance(label, str) or not label.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="speaker label must be a non-empty string",
+            )
+        if not isinstance(value, str):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="display name must be a string",
+            )
+        trimmed = value.strip()
+        if not trimmed:
+            # Empty / whitespace value means "clear this alias"; the
+            # replace-all path simply doesn't INSERT it.
+            continue
+        if len(trimmed) > MAX_SPEAKER_DISPLAY_NAME_LENGTH:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"display name exceeds {MAX_SPEAKER_DISPLAY_NAME_LENGTH} chars",
+            )
+        cleaned[label.strip()] = trimmed
+    return cleaned
 
 
 def _validate_tags(tags: list[str]) -> list[str]:
@@ -442,12 +502,24 @@ async def get_meeting(
             .all()
         )
 
+    alias_rows = (
+        (
+            await session.execute(
+                select(SpeakerAlias).where(SpeakerAlias.meeting_id == meeting_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    speaker_aliases: dict[str, str] = {a.original_label: a.display_name for a in alias_rows}
+
     base = _meeting_to_dto(meeting)
     return MeetingDetailDTO(
         **base.model_dump(),
         segments=[_segment_to_dto(s) for s in segments],
         summary=_summary_to_dto(summary, action_items),
         summaryStatus=(summary.status if summary is not None else "pending"),
+        speakerAliases=speaker_aliases,
     )
 
 
@@ -547,6 +619,63 @@ async def delete_meeting_audio(
     await session.flush()
     log.info("meetings.audio_deleted id=%s key=%s", meeting_id, key)
     return None
+
+
+# --- Phase 4: speaker rename (US-26 / FR-4.10 / FR-4.11) ---------------------
+
+
+@router.put(
+    "/{meeting_id}/speaker_aliases",
+    response_model=MeetingDetailDTO,
+)
+async def put_speaker_aliases(
+    meeting_id: UUID,
+    body: PutSpeakerAliasesRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_request_session)],
+) -> MeetingDetailDTO:
+    """Replace the meeting's speaker-alias map.
+
+    PUT semantics: the body's `aliases` map fully replaces the stored
+    set. Empty or whitespace values are dropped silently — the desktop
+    sends an empty string to clear an alias. Idempotent. Cross-user
+    attempts 404 via RLS (the meeting lookup returns None).
+
+    The endpoint returns the full meeting detail — same shape as
+    GET /meetings/:id — so the desktop can update its cache atomically.
+    """
+    meeting = (
+        await session.execute(select(Meeting).where(Meeting.id == meeting_id))
+    ).scalar_one_or_none()
+    if meeting is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="meeting not found"
+        )
+
+    cleaned = _validate_speaker_aliases(body.aliases)
+
+    # Replace-all: wipe then insert. Cheaper than diffing for the
+    # cardinalities involved (≤32 rows per meeting). The RLS policy
+    # guarantees we can only delete and insert rows owned by the
+    # current user.
+    await session.execute(
+        delete(SpeakerAlias).where(SpeakerAlias.meeting_id == meeting_id)
+    )
+    for label, name in cleaned.items():
+        session.add(
+            SpeakerAlias(
+                meeting_id=meeting_id,
+                user_id=user.id,
+                original_label=label,
+                display_name=name,
+            )
+        )
+    await session.flush()
+    log.info(
+        "meetings.speaker_aliases_set id=%s count=%d", meeting_id, len(cleaned)
+    )
+
+    return await get_meeting(meeting_id=meeting_id, session=session)
 
 
 # --- Phase 3: summarisation endpoints ----------------------------------------

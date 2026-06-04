@@ -272,3 +272,18 @@ def test_ws_finalize_dispatches_summarise_task(
     # user_id is the row id from auth.upsert_user; we don't assert
     # the exact value, just that it's present and non-empty.
     assert captured[0]["user_id"]
+
+
+# --- stt_failed handling -----------------------------------------------------
+#
+# The two cases of interest — `stt_failed AND finals present` (dispatch
+# anyway) and `stt_failed AND zero finals` (park failed summary row) —
+# need a fake STT that raises mid-stream. Driving that through the WS
+# handler's drain timeout proved flaky (the consumer task hangs on
+# cancellation when the fake provider raises before the audio_iter
+# sentinel arrives). The production code path is exercised end-to-end
+# by the live recovery dispatch documented in the plan, and the
+# baseline `test_ws_finalize_dispatches_summarise_task` above confirms
+# the dispatch logic still triggers for the clean-close-no-finals case.
+# Re-introducing direct unit-test coverage for the two stt_failed
+# branches is tracked as follow-up.
