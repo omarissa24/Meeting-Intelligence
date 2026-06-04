@@ -69,9 +69,11 @@ class Settings(BaseSettings):
     # (default for dev/CI, no key required); "anthropic" routes through
     # AnthropicClaudeLLM and requires anthropic_api_key.
     llm_provider: Literal["fake", "anthropic"] = "fake"
-    # Pinned per FR-3.04. Override via env only if a successor model
-    # genuinely improves quality on the eval set.
-    anthropic_model: str = "claude-sonnet-4-20250514"
+    # Per FR-3.04. Originally pinned to claude-sonnet-4-20250514; rolled
+    # forward to the current Sonnet generation when the original EOL'd.
+    # Override via env only if a successor genuinely improves quality
+    # on the eval set.
+    anthropic_model: str = "claude-sonnet-4-6"
     # FR-3.07 token budget guard. Inputs above this trip the chunked
     # fallback path in the LangGraph summariser. Anthropic's actual
     # context window is larger; we pad below the limit so reduce-pass
