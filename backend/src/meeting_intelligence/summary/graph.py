@@ -26,6 +26,7 @@ Branching:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Protocol, TypedDict, cast
 
 from langgraph.graph import END, START, StateGraph
@@ -130,14 +131,25 @@ async def incremental_summary_node(
     state: SummaryState,
     config: RunnableConfig,
 ) -> SummaryState:
-    """Per-chunk condensation. Serial loop over `chunks`."""
+    """Per-chunk condensation. Parallel fan-out across `chunks`.
+
+    Chunks are semantically independent — chunk N's condensation
+    doesn't depend on chunk N-1's output, only the reduce step
+    consumes them collectively. So we `asyncio.gather` over the
+    chunks: wall-clock = slowest single chunk, not sum of chunks.
+    This is the FR-3.15 ≤45s budget lever for the map-reduce path.
+
+    Anthropic's per-key concurrency limits comfortably accommodate
+    the chunk counts our 180k-token guard produces (≤~5-10 chunks),
+    so we don't bound the gather. If a deployment ever bumps that
+    cap, layer a `Semaphore` here.
+    """
     llm = _llm_from_config(config)
     chunks = state.get("chunks") or []
-    summaries: list[str] = []
     in_tok = state.get("input_tokens", 0)
     out_tok = state.get("output_tokens", 0)
 
-    for idx, chunk in enumerate(chunks):
+    async def _summarise_one(idx: int, chunk: str) -> str:
         prompt = INCREMENTAL_PROMPT_TEMPLATE.format(
             chunk_index=idx + 1,
             chunk_total=len(chunks),
@@ -150,10 +162,14 @@ async def incremental_summary_node(
         )
         # The fake provider returns "" from complete(); guard so an
         # empty response doesn't poison the reduce step.
-        summaries.append(text or f"(chunk {idx + 1} produced no output)")
+        return text or f"(chunk {idx + 1} produced no output)"
+
+    summaries = await asyncio.gather(
+        *(_summarise_one(idx, chunk) for idx, chunk in enumerate(chunks))
+    )
 
     return {
-        "incremental_summaries": summaries,
+        "incremental_summaries": list(summaries),
         "input_tokens": in_tok,
         "output_tokens": out_tok,
     }
