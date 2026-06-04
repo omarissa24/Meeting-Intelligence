@@ -414,6 +414,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_shell::init())
+        // US-19 Export: dialog opens the OS save-as picker; fs writes
+        // the chosen path. Both plugins gated by `dialog:default` /
+        // `fs:allow-write-text-file` in capabilities/default.json.
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(Mutex::new(RecordingState::default()))
         .manage(OAuthState::default())
         .setup(|app| {

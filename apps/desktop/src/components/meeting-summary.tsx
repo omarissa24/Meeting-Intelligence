@@ -322,15 +322,19 @@ function ButtonRow({
         return;
       }
       const text = await res.text();
-      // Spawn a transient anchor to trigger a download. Tauri 2 still
-      // honors the same data: + download attribute pattern as the web.
-      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `meeting-${meetingId}.txt`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // Tauri 2's webview doesn't honor the blob+anchor `<a download>`
+      // trick — it silently no-ops. Go through the dialog + fs plugins
+      // instead. `save()` returns null when the user cancels the
+      // picker; we treat that as a clean abort, no toast.
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+      const path = await save({
+        defaultPath: `meeting-${meetingId}.txt`,
+        filters: [{ name: "Text", extensions: ["txt"] }],
+      });
+      if (!path) return;
+      await writeTextFile(path, text);
+      toast.success("Summary exported");
     } catch (err) {
       console.error("export failed", err);
       toast.error("Export failed");

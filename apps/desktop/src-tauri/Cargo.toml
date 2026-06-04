@@ -17,6 +17,12 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-shell = "2"
+# Phase 3 / US-19 export: native save dialog + filesystem write so the
+# transcript-export download actually lands on disk. The blob+anchor
+# `<a download>` web trick is silently no-op in Tauri's webview, so the
+# desktop has to go through the IPC plugins for this.
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
 # Cross-platform OS credential store wrapper. Picks up Keychain on macOS
 # and the Credential Manager on Windows (FFI under the hood — no file IO,
 # so no fs capability needed). The `apple-native` and `windows-native`
