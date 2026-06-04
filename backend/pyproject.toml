@@ -54,6 +54,15 @@ dev = [
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
+# `e2e` tests hit real external services (Anthropic API today; future
+# real-Deepgram or real-S3 cases land here too). Default `pytest`
+# excludes them so unit/integration runs stay fast and free; opt in
+# with `pytest -m e2e`. The tests themselves auto-skip when the
+# relevant API key env var is unset.
+markers = [
+    "e2e: real external-service tests; require API keys (skipped by default)",
+]
+addopts = "-m 'not e2e'"
 
 [tool.ruff]
 line-length = 100
