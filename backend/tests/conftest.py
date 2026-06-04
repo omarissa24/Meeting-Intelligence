@@ -14,13 +14,20 @@ Each test session creates an ephemeral database and exposes two engines:
   - `db_engine` (admin) — connects as the admin role; RLS is bypassed
     here because the admin is also the table owner. Use it for schema
     introspection (pg_class, pg_policies) only.
-  - `db_session_factory` (app) — connects as `app_user`, the
-    non-superuser role created by the migration. RLS policies apply.
-    Use this for cross-user isolation tests.
+  - `db_session_factory` (app) — connects as a per-session impersonator
+    role `mi_test_app_<hex>` that is `IN ROLE app_user`. Postgres role
+    inheritance means it picks up every grant `app_user` has (table
+    DML, sequence USAGE, SECURITY DEFINER function EXECUTEs) without
+    us re-granting anything. RLS policies apply because the role is a
+    non-superuser. Use this for cross-user isolation tests.
 
-`app_user` is created NOLOGIN by the migration; the fixture grants LOGIN
-+ a per-session password and revokes it on teardown so the migration
-itself stays deployment-clean.
+The per-session role pattern is deliberate. We used to mutate the
+shared `app_user` role itself (`ALTER ROLE app_user LOGIN PASSWORD ...`
+on entry, `NOLOGIN` on teardown). Any test interruption — Ctrl-C, OOM,
+the dev backend running while tests ran — left `app_user` in a bad
+state cluster-wide and broke the dev backend's auth. The impersonator
+role is created fresh per session and dropped on teardown; the shared
+`app_user` role is never touched.
 """
 
 from __future__ import annotations
@@ -92,28 +99,41 @@ def db_urls() -> tuple[str, str]:
         check=True,
     )
 
-    # Promote `app_user` to a login role for the test session. This is
-    # test-only — production grants LOGIN out-of-band so the migration
-    # itself stays deployment-environment-agnostic.
-    app_password = secrets.token_hex(16)
+    # Per-session impersonator role. `IN ROLE app_user` makes it
+    # inherit every grant `app_user` has (table DML, sequence USAGE,
+    # SECURITY DEFINER function EXECUTEs) automatically — no
+    # re-granting required, and any future migration that adds a
+    # `GRANT ... TO app_user` is picked up for free. Postgres role
+    # names are limited to NAMEDATALEN-1 (default 63) chars and must
+    # match `[A-Za-z_][A-Za-z0-9_]*`; `mi_test_app_<16-hex>` is 28 and
+    # safe.
+    test_role = f"mi_test_app_{secrets.token_hex(8)}"
+    test_password = secrets.token_hex(16)
     sync_admin_test_db = admin_url.replace("postgresql+psycopg://", "postgresql://", 1)
     with psycopg.connect(sync_admin_test_db, autocommit=True) as conn:
-        conn.execute(f"ALTER ROLE app_user LOGIN PASSWORD '{app_password}'")
-        conn.execute(f"GRANT CONNECT ON DATABASE \"{test_db}\" TO app_user")
-        conn.execute("GRANT USAGE ON SCHEMA public TO app_user")
-        conn.execute("GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO app_user")
         conn.execute(
-            "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-            "GRANT USAGE, SELECT ON SEQUENCES TO app_user"
+            f"CREATE ROLE \"{test_role}\" "
+            f"LOGIN PASSWORD '{test_password}' IN ROLE app_user"
         )
+        conn.execute(f'GRANT CONNECT ON DATABASE "{test_db}" TO "{test_role}"')
+        # Schema USAGE is granted to app_user by the migration but the
+        # impersonator can't pick that up via inheritance for schema
+        # privileges in some Postgres versions; granting directly here
+        # is a cheap belt-and-braces.
+        conn.execute(f'GRANT USAGE ON SCHEMA public TO "{test_role}"')
 
     host_and_port = head.split("@", 1)[1]
-    app_url = f"postgresql+psycopg://app_user:{app_password}@{host_and_port}/{test_db}"
+    app_url = (
+        f"postgresql+psycopg://{test_role}:{test_password}@{host_and_port}/{test_db}"
+    )
 
     try:
         yield admin_url, app_url
     finally:
-        # Tear down: revoke LOGIN, kill connections, drop the DB.
+        # Tear down: kill connections, drop the DB, drop the
+        # per-session role. Order matters — `DROP ROLE` fails if the
+        # role still owns objects, so the DB drop comes first. The
+        # shared `app_user` role is intentionally untouched.
         with psycopg.connect(sync_admin_default_db, autocommit=True) as conn:
             conn.execute(
                 "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
@@ -121,10 +141,12 @@ def db_urls() -> tuple[str, str]:
                 (test_db,),
             )
             conn.execute(f'DROP DATABASE IF EXISTS "{test_db}"')
-            # ALTER ROLE NOLOGIN keeps the role around for any next session
-            # while disabling auth — safer than DROP ROLE, which could fail
-            # if other test runs are racing.
-            conn.execute("ALTER ROLE app_user NOLOGIN")
+            # Best-effort: ignore "role does not exist" if a previous
+            # teardown already cleaned up. `DROP ROLE` cascades into
+            # any per-DB grants that would otherwise be implicit
+            # references; since the DB itself is gone above, this is
+            # always safe.
+            conn.execute(f'DROP ROLE IF EXISTS "{test_role}"')
 
 
 @pytest_asyncio.fixture
