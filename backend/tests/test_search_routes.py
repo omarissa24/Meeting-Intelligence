@@ -23,16 +23,13 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
-from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from meeting_intelligence.api.deps import (
     get_auth_provider,
