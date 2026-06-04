@@ -141,13 +141,38 @@ pub enum SessionError {
 pub struct Session {
     session_id: String,
     mic: Box<dyn MicSource>,
-    system: Box<dyn SystemSource>,
+    /// `None` when the user has system-audio capture toggled off in
+    /// settings (US-25). When `None`, the platform `SystemSource` is
+    /// never constructed — so `SCShareableContent::get()` is never
+    /// invoked on macOS and WASAPI loopback is never opened on Windows.
+    system: Option<Box<dyn SystemSource>>,
     pipeline: Option<PipelineHandle>,
     emitter: Option<JoinHandle<u64>>,
     /// Per-second process telemetry thread. Lives the full session
     /// lifetime; signal `perf_stop_tx` then `.join()` to tear it down.
     perf_join: Option<JoinHandle<()>>,
     perf_stop_tx: Sender<()>,
+    /// True when `start` requested a non-default mic device by label
+    /// but the device wasn't found and we fell back to the system
+    /// default. Read by the orchestrator after `start` to decide
+    /// whether to emit a `MIC_DEVICE_FALLBACK` toast.
+    pub mic_fell_back_to_default: bool,
+}
+
+/// Inputs to `Session::start` that come from the user's settings, not
+/// from the audio pipeline itself. Defaults match a fresh install.
+#[derive(Debug, Clone, Default)]
+pub struct RecordingConfig {
+    /// `None` ⇒ system default mic, re-resolved each start. `Some(label)`
+    /// matches against `cpal::Device::name()`.
+    pub mic_device_label: Option<String>,
+    /// When `false`, no system audio source is constructed (no
+    /// permission prompt, no WASAPI loopback, no SCKit query).
+    pub enable_system_audio: bool,
+    /// Optional BCP-47 short code or "auto". Logged here for diagnosis;
+    /// the actual STT routing happens in the frontend WS client which
+    /// owns ClientHello.
+    pub language: Option<String>,
 }
 
 impl Session {
@@ -160,31 +185,50 @@ impl Session {
     pub fn start<R: Runtime>(
         app: &AppHandle<R>,
         session_id: String,
+        config: RecordingConfig,
     ) -> Result<Self, SessionError> {
-        let mut mic = CpalMicSource::new();
-        #[cfg(target_os = "macos")]
-        let mut system = SCKitSystemSource::new();
-        #[cfg(target_os = "windows")]
-        let mut system = WasapiSystemSource::new();
+        eprintln!(
+            "session: start session_id={session_id} mic_device={:?} system_audio={} language={:?}",
+            config.mic_device_label,
+            config.enable_system_audio,
+            config.language,
+        );
+
+        let mut mic =
+            CpalMicSource::new().with_device_label(config.mic_device_label.clone());
 
         let mut pipeline = pipeline::spawn();
         let audio_sink = pipeline.audio_sink();
 
-        // Start sources second so any failure here doesn't leave the
-        // pipeline thread orphaned. If `system.start` fails, the
-        // sink-clone is dropped along with `audio_sink` and the
-        // pipeline exits cleanly.
-        if let Err(e) = system.start(audio_sink.clone()) {
-            // Stop pipeline before bubbling the error up.
-            let _ = pipeline.stop();
-            return Err(SessionError::Source(e));
-        }
+        // System audio is gated on the user's setting. When disabled,
+        // we never construct the platform SystemSource, so neither
+        // ScreenCaptureKit (macOS) nor WASAPI loopback (Windows) is
+        // touched and macOS won't fire the screen-recording permission
+        // prompt.
+        let mut system_opt: Option<Box<dyn SystemSource>> = if config.enable_system_audio {
+            #[cfg(target_os = "macos")]
+            let mut system = SCKitSystemSource::new();
+            #[cfg(target_os = "windows")]
+            let mut system = WasapiSystemSource::new();
+
+            if let Err(e) = system.start(audio_sink.clone()) {
+                let _ = pipeline.stop();
+                return Err(SessionError::Source(e));
+            }
+            Some(Box::new(system) as Box<dyn SystemSource>)
+        } else {
+            None
+        };
+
         if let Err(e) = mic.start(audio_sink) {
-            // Best-effort cleanup: stop system, then pipeline.
-            let _ = system.stop();
+            // Best-effort cleanup: stop system (if started), then pipeline.
+            if let Some(system) = system_opt.as_mut() {
+                let _ = system.stop();
+            }
             let _ = pipeline.stop();
             return Err(SessionError::Source(e));
         }
+        let mic_fell_back_to_default = mic.take_fell_back_to_default();
 
         // Take the chunk receiver out of the handle so we can move it
         // into the emitter thread without losing access to the rest
@@ -212,11 +256,12 @@ impl Session {
         Ok(Self {
             session_id,
             mic: Box::new(mic),
-            system: Box::new(system),
+            system: system_opt,
             pipeline: Some(pipeline),
             emitter: Some(emitter),
             perf_join: Some(perf_join),
             perf_stop_tx,
+            mic_fell_back_to_default,
         })
     }
 
@@ -236,13 +281,19 @@ impl Session {
         if let Err(e) = self.mic.stop() {
             eprintln!("session: mic.stop failed: {e}");
         }
-        if let Err(e) = self.system.stop() {
-            eprintln!("session: system.stop failed: {e}");
+        if let Some(system) = self.system.as_mut() {
+            if let Err(e) = system.stop() {
+                eprintln!("session: system.stop failed: {e}");
+            }
         }
 
         // Capture source-side counters before we drop them.
         let mic_counters = self.mic.counters();
-        let system_counters = self.system.counters();
+        let system_counters = self
+            .system
+            .as_ref()
+            .map(|s| s.counters())
+            .unwrap_or_default();
 
         // 2. Pipeline: dropping its sink is implicit when the
         //    PipelineHandle goes out of scope inside .stop(). The
@@ -289,7 +340,9 @@ impl Drop for Session {
         // handles. Errors are swallowed because we're already
         // cleaning up.
         let _ = self.mic.stop();
-        let _ = self.system.stop();
+        if let Some(system) = self.system.as_mut() {
+            let _ = system.stop();
+        }
         if let Some(handle) = self.pipeline.take() {
             let _ = handle.stop();
         }

@@ -18,6 +18,12 @@ export interface ClientHello {
   sessionId: string;
   clientVersion: string;
   capabilities: ClientCapabilities;
+  /**
+   * Optional BCP-47 short code (e.g. "en", "es", "fr") or "auto". When
+   * absent or "auto", the backend lets the STT provider auto-detect.
+   * Older clients omit this field; backend treats absence as "auto".
+   */
+  language?: string;
 }
 
 export interface ClientBye {

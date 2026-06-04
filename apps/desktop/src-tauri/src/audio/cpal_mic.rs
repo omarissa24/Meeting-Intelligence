@@ -41,6 +41,17 @@ pub struct CpalMicSource {
     received: Arc<AtomicU64>,
     dropped: Arc<AtomicU64>,
     drop_log_threshold: u64,
+    /// Optional preferred device label. `None` ⇒ pick the system
+    /// default. `Some(label)` walks the input-device list and matches
+    /// against `cpal::Device::name()`. On no-match we fall back to the
+    /// system default and set `fell_back_to_default = true` so the
+    /// caller can surface a toast.
+    preferred_device_label: Option<String>,
+    /// True after `start` if a non-default label was requested but the
+    /// device wasn't found and we fell back. Read once via
+    /// `take_fell_back_to_default` after start completes; the
+    /// recording orchestrator emits the toast event from there.
+    fell_back_to_default: Mutex<bool>,
 }
 
 impl CpalMicSource {
@@ -51,7 +62,29 @@ impl CpalMicSource {
             received: Arc::new(AtomicU64::new(0)),
             dropped: Arc::new(AtomicU64::new(0)),
             drop_log_threshold: DEFAULT_DROP_LOG_THRESHOLD,
+            preferred_device_label: None,
+            fell_back_to_default: Mutex::new(false),
         }
+    }
+
+    /// Set the preferred input device by its `cpal::Device::name()` string.
+    /// `None` keeps the system-default behaviour.
+    pub fn with_device_label(mut self, label: Option<String>) -> Self {
+        self.preferred_device_label = label;
+        self
+    }
+
+    /// Read-and-clear: returns `true` exactly once if `start()` had to
+    /// fall back to the system default after the requested label wasn't
+    /// found among the cpal input devices.
+    pub fn take_fell_back_to_default(&self) -> bool {
+        let mut guard = match self.fell_back_to_default.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+        let value = *guard;
+        *guard = false;
+        value
     }
 
     pub fn received_frames(&self) -> u64 {
@@ -94,6 +127,52 @@ impl Default for CpalMicSource {
     }
 }
 
+/// Enumerate cpal input devices' display names. Empty result is
+/// success (e.g. Linux dev / CI without an audio host).
+pub fn list_inputs() -> Result<Vec<String>, SourceError> {
+    let host = cpal::default_host();
+    let devices = host
+        .input_devices()
+        .map_err(|e| SourceError::DeviceUnavailable(format!("input_devices: {e}")))?;
+    let mut out = Vec::new();
+    for device in devices {
+        // `name()` is deprecated in favor of `description()`, but the
+        // current cpal pin still uses `name()` (see start()).
+        #[allow(deprecated)]
+        if let Ok(name) = device.name() {
+            out.push(name);
+        }
+    }
+    Ok(out)
+}
+
+/// Pure helper: pick a device whose name matches `preferred_label`, or
+/// fall back to the supplied default. Returns `(device, fell_back)`.
+/// `fell_back` is `true` when a label was requested but no input
+/// device's name matched (so we used the default).
+///
+/// Factored out so unit tests can drive it without a real cpal host.
+pub(crate) fn pick_device<D, I>(
+    inputs: I,
+    default: D,
+    preferred_label: Option<&str>,
+) -> (D, bool)
+where
+    I: IntoIterator<Item = (String, D)>,
+{
+    match preferred_label {
+        None => (default, false),
+        Some(label) => {
+            for (name, dev) in inputs {
+                if name == label {
+                    return (dev, false);
+                }
+            }
+            (default, true)
+        }
+    }
+}
+
 impl MicSource for CpalMicSource {
     fn start(&mut self, sink: SyncSender<AudioFrame>) -> Result<(), SourceError> {
         let mut guard = self
@@ -105,9 +184,39 @@ impl MicSource for CpalMicSource {
         }
 
         let host = cpal::default_host();
-        let device = host
+        let default_device = host
             .default_input_device()
             .ok_or_else(|| SourceError::DeviceUnavailable("no default input device".into()))?;
+
+        let (device, fell_back) = match self.preferred_device_label.as_deref() {
+            None => (default_device, false),
+            Some(label) => {
+                let inputs = host
+                    .input_devices()
+                    .map_err(|e| SourceError::DeviceUnavailable(format!("input_devices: {e}")))?;
+                let mut matched: Option<cpal::Device> = None;
+                for d in inputs {
+                    #[allow(deprecated)]
+                    if d.name().ok().as_deref() == Some(label) {
+                        matched = Some(d);
+                        break;
+                    }
+                }
+                match matched {
+                    Some(d) => (d, false),
+                    None => {
+                        eprintln!(
+                            "audio/mic: requested device '{label}' not found; \
+                             falling back to system default"
+                        );
+                        (default_device, true)
+                    }
+                }
+            }
+        };
+        if let Ok(mut g) = self.fell_back_to_default.lock() {
+            *g = fell_back;
+        }
         // `name()` is deprecated in favor of `description()` / `id()`, but the
         // newer methods aren't on the trait yet at our pinned cpal version.
         // Silence the warning at the call site rather than across the file.
@@ -223,5 +332,52 @@ impl MicSource for CpalMicSource {
             received: self.received_frames(),
             dropped: self.dropped_frames(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pick_device;
+
+    #[test]
+    fn pick_device_no_label_returns_default() {
+        let inputs: Vec<(String, &'static str)> = vec![
+            ("Built-in Microphone".into(), "builtin"),
+            ("AirPods Pro".into(), "airpods"),
+        ];
+        let (chosen, fell_back) = pick_device(inputs, "default-device", None);
+        assert_eq!(chosen, "default-device");
+        assert!(!fell_back);
+    }
+
+    #[test]
+    fn pick_device_label_match_returns_device_no_fallback() {
+        let inputs: Vec<(String, &'static str)> = vec![
+            ("Built-in Microphone".into(), "builtin"),
+            ("AirPods Pro".into(), "airpods"),
+        ];
+        let (chosen, fell_back) =
+            pick_device(inputs, "default-device", Some("AirPods Pro"));
+        assert_eq!(chosen, "airpods");
+        assert!(!fell_back);
+    }
+
+    #[test]
+    fn pick_device_label_no_match_falls_back_to_default() {
+        let inputs: Vec<(String, &'static str)> = vec![
+            ("Built-in Microphone".into(), "builtin"),
+        ];
+        let (chosen, fell_back) =
+            pick_device(inputs, "default-device", Some("Ghost USB Mic"));
+        assert_eq!(chosen, "default-device");
+        assert!(fell_back);
+    }
+
+    #[test]
+    fn pick_device_empty_input_list_with_label_falls_back() {
+        let inputs: Vec<(String, &'static str)> = vec![];
+        let (chosen, fell_back) = pick_device(inputs, "default-device", Some("anything"));
+        assert_eq!(chosen, "default-device");
+        assert!(fell_back);
     }
 }

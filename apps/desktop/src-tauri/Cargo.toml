@@ -23,6 +23,11 @@ tauri-plugin-shell = "2"
 # desktop has to go through the IPC plugins for this.
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+# Phase 4 / US-25 settings persistence: per-user JSON store under the OS
+# app-data directory. Survives app updates because the bundle identifier
+# is stable. We persist the mic device label, system-audio toggle, and
+# transcription language here.
+tauri-plugin-store = "2"
 # Cross-platform OS credential store wrapper. Picks up Keychain on macOS
 # and the Credential Manager on Windows (FFI under the hood — no file IO,
 # so no fs capability needed). The `apple-native` and `windows-native`

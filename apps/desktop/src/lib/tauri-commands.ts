@@ -51,8 +51,37 @@ export interface PermissionsSnapshot {
   screen: PermState;
 }
 
-export async function startRecording(sessionId: string): Promise<StartRecordingResult> {
-  return invoke<StartRecordingResult>("start_recording", { sessionId });
+/**
+ * US-25: per-session settings snapshot frozen at recording start. The
+ * camelCase field names match the Rust `RecordingOptions` serde rename.
+ */
+export interface RecordingOptions {
+  /** null ⇒ system default (re-resolves at start). */
+  micDeviceLabel: string | null;
+  enableSystemAudio: boolean;
+  /** null/"auto" → omit; concrete BCP-47 short code otherwise. */
+  language: string | null;
+}
+
+export async function startRecording(
+  sessionId: string,
+  options?: RecordingOptions,
+): Promise<StartRecordingResult> {
+  return invoke<StartRecordingResult>("start_recording", { sessionId, options });
+}
+
+export interface AudioInputDevice {
+  /** cpal `Device::name()` string. */
+  label: string;
+}
+
+/**
+ * Enumerate cpal input devices for the Settings mic picker. Empty
+ * array is success (sandboxed CI / no input hardware). The frontend
+ * always prepends a synthetic "System default" option in front.
+ */
+export async function listAudioInputs(): Promise<AudioInputDevice[]> {
+  return invoke<AudioInputDevice[]>("list_audio_inputs");
 }
 
 export async function stopRecording(): Promise<StopRecordingResult> {

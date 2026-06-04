@@ -64,7 +64,14 @@ export interface ReconnectingWsOpts {
     sessionId: string,
     handlers: TranscriptWsHandlers,
     accessToken: string | null,
+    language: string | null,
   ) => TranscriptWsClient;
+  /**
+   * BCP-47 short code (e.g. "en", "es") or null. Forwarded to every
+   * (re)connect on the `ClientHello.language` field so the STT
+   * provider sees a consistent language across reconnects.
+   */
+  language?: string | null;
   /**
    * Resolve the access token to send as the WS subprotocol on each
    * (re)connect. Defaults to `authGetAccessToken` from tauri-commands,
@@ -105,6 +112,7 @@ export function createReconnectingWsClient(
   const connectFn = opts.connectFn ?? defaultConnectFn;
   const getAccessToken = opts.getAccessToken ?? authGetAccessToken;
   const now = opts.now ?? (() => Date.now());
+  const language: string | null = opts.language ?? null;
 
   const buffer = new AudioRingBuffer<ClientWsMessage>(maxBuffered);
   const listeners = new Set<(snap: ReconnectingWsObserver) => void>();
@@ -278,10 +286,10 @@ export function createReconnectingWsClient(
         .catch(() => null)
         .then((token) => {
           if (userClosed) return;
-          underlying = connectFn(sessionId, wsHandlers, token);
+          underlying = connectFn(sessionId, wsHandlers, token, language);
         });
     } else {
-      underlying = connectFn(sessionId, wsHandlers, resolved as string | null);
+      underlying = connectFn(sessionId, wsHandlers, resolved as string | null, language);
     }
   };
 

@@ -177,6 +177,8 @@ async def test_transcribe_passes_correct_connect_options(
         pass
 
     kwargs = patched_client["connect_kwargs"]
+    # Default call (no language argument) must NOT include the `language`
+    # kwarg — its absence is what flips Deepgram into auto-detect.
     assert kwargs == {  # type: ignore[comparison-overlap]
         "model": "nova-2",
         "encoding": "linear16",
@@ -187,6 +189,54 @@ async def test_transcribe_passes_correct_connect_options(
         "punctuate": True,
         "smart_format": True,
     }
+
+
+async def test_transcribe_omits_language_when_auto(
+    patched_client: dict[str, object],
+    patched_isinstance: None,
+) -> None:
+    patched_client["conn"] = _FakeConn([])
+
+    from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
+
+    stt = DeepgramNovaSTT(api_key="fake")
+    async for _ in stt.transcribe("sess-auto", _collect([]), language="auto"):
+        pass
+
+    kwargs: dict[str, object] = patched_client["connect_kwargs"]  # type: ignore[assignment]
+    assert "language" not in kwargs
+
+
+async def test_transcribe_omits_language_when_none(
+    patched_client: dict[str, object],
+    patched_isinstance: None,
+) -> None:
+    patched_client["conn"] = _FakeConn([])
+
+    from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
+
+    stt = DeepgramNovaSTT(api_key="fake")
+    async for _ in stt.transcribe("sess-none", _collect([]), language=None):
+        pass
+
+    kwargs: dict[str, object] = patched_client["connect_kwargs"]  # type: ignore[assignment]
+    assert "language" not in kwargs
+
+
+async def test_transcribe_forwards_explicit_language(
+    patched_client: dict[str, object],
+    patched_isinstance: None,
+) -> None:
+    patched_client["conn"] = _FakeConn([])
+
+    from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
+
+    stt = DeepgramNovaSTT(api_key="fake")
+    async for _ in stt.transcribe("sess-es", _collect([]), language="es"):
+        pass
+
+    kwargs: dict[str, object] = patched_client["connect_kwargs"]  # type: ignore[assignment]
+    assert kwargs.get("language") == "es"
 
 
 async def test_transcribe_sends_every_chunk_and_closes(

@@ -43,6 +43,8 @@ class STTProvider(ABC):
         self,
         session_id: str,
         audio_stream: AsyncIterator[bytes],
+        *,
+        language: str | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
         """Consume an audio byte stream, yield transcript events.
 
@@ -50,5 +52,9 @@ class STTProvider(ABC):
         implementations are async generators (`async def` with `yield`); the
         abstract signature is a plain `def` returning `AsyncIterator` so mypy
         accepts the override (see PEP 525 / mypy async-iterator docs).
+
+        `language` is an optional BCP-47 short code (e.g. "en", "es"). Both
+        `None` and the literal string "auto" mean "let the provider
+        auto-detect" — implementations must treat them identically.
         """
         raise NotImplementedError

@@ -194,7 +194,10 @@ class _FailingSTT(STTProvider):
         self,
         session_id: str,
         audio_stream: AsyncIterator[bytes],
+        *,
+        language: str | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
+        del language  # ignored: this stub fails before language matters
         raise STTProviderError("simulated 401")
         # Unreachable but keeps the function an async generator for
         # signature-compat with concrete providers.
@@ -297,6 +300,73 @@ def test_stt_failure_logs_at_error_level(
     ]
     assert matches, "expected an ERROR log mentioning STT_PROVIDER_FAILURE"
     assert all(r.levelno == logging.ERROR for r in matches)
+
+
+def test_client_hello_language_propagates_to_stt(client: TestClient) -> None:
+    captured: dict[str, object] = {}
+
+    class _Capture(STTProvider):
+        provider_id: str = "capture"
+
+        async def transcribe(  # type: ignore[override]
+            self,
+            session_id: str,
+            audio_stream: AsyncIterator[bytes],
+            *,
+            language: str | None = None,
+        ) -> AsyncIterator[TranscriptEvent]:
+            captured["language"] = language
+            async for _ in audio_stream:
+                pass
+            return
+            yield  # pragma: no cover
+
+    app.dependency_overrides[get_stt_provider] = lambda: _Capture()
+    try:
+        with client.websocket_connect("/transcript/ws/sess-lang-fr") as ws:
+            hello = _hello("sess-lang-fr")
+            hello["language"] = "fr"
+            ws.send_text(json.dumps(hello))
+            assert json.loads(ws.receive_text())["type"] == "session_started"
+            ws.send_text(json.dumps({"type": "client_bye", "sessionId": "sess-lang-fr"}))
+    finally:
+        app.dependency_overrides.pop(get_stt_provider, None)
+
+    assert captured.get("language") == "fr"
+
+
+def test_client_hello_without_language_yields_none(client: TestClient) -> None:
+    """Backward compat: clients that omit `language` reach STT with None."""
+    captured: dict[str, object] = {}
+
+    class _Capture(STTProvider):
+        provider_id: str = "capture-none"
+
+        async def transcribe(  # type: ignore[override]
+            self,
+            session_id: str,
+            audio_stream: AsyncIterator[bytes],
+            *,
+            language: str | None = None,
+        ) -> AsyncIterator[TranscriptEvent]:
+            captured["language"] = language
+            async for _ in audio_stream:
+                pass
+            return
+            yield  # pragma: no cover
+
+    app.dependency_overrides[get_stt_provider] = lambda: _Capture()
+    try:
+        with client.websocket_connect("/transcript/ws/sess-lang-none") as ws:
+            ws.send_text(json.dumps(_hello("sess-lang-none")))
+            assert json.loads(ws.receive_text())["type"] == "session_started"
+            ws.send_text(
+                json.dumps({"type": "client_bye", "sessionId": "sess-lang-none"})
+            )
+    finally:
+        app.dependency_overrides.pop(get_stt_provider, None)
+
+    assert captured.get("language") is None
 
 
 def test_invalid_base64_audio_chunk_emits_error(client: TestClient) -> None:

@@ -26,7 +26,10 @@ class InMemoryEchoSTT(STTProvider):
         self,
         session_id: str,
         audio_stream: AsyncIterator[bytes],
+        *,
+        language: str | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
+        del language  # echo provider has nothing to detect; accept and ignore
         seq = 0
         async for _chunk in audio_stream:
             seq += 1

@@ -8,7 +8,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_shell::ShellExt;
@@ -27,7 +27,37 @@ use crate::audio::macos::permissions::{self, PermissionsSnapshot};
 use crate::audio::windows::permissions::{self, PermissionsSnapshot};
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-use crate::recording::{Session, SessionStats};
+use crate::recording::{RecordingConfig, Session, SessionStats};
+
+/// IPC payload for `start_recording`. Comes in alongside the path
+/// `session_id` so all per-session settings travel through the same
+/// IPC call. Fields default to the same shape a fresh install gets.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecordingOptions {
+    /// `null` ⇒ system default mic.
+    #[serde(default)]
+    mic_device_label: Option<String>,
+    /// Defaults to `true` so older frontends without US-25 wiring
+    /// behave like before.
+    #[serde(default = "default_true")]
+    enable_system_audio: bool,
+    #[serde(default)]
+    language: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// One enumerated cpal input device. `label` is the human-readable
+/// display name from `cpal::Device::name()`. The frontend always
+/// prepends a synthetic "System default" option in front of this list.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AudioInputDevice {
+    label: String,
+}
 
 #[derive(Default)]
 struct RecordingState {
@@ -92,6 +122,7 @@ async fn start_recording<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, Mutex<RecordingState>>,
     session_id: String,
+    options: Option<RecordingOptions>,
 ) -> Result<StartRecordingResult, CommandError> {
     // Pre-check: refuse to double-start.
     {
@@ -114,15 +145,29 @@ async fn start_recording<R: Runtime>(
     }
     let started_at = Utc::now();
 
+    let options = options.unwrap_or_else(|| RecordingOptions {
+        mic_device_label: None,
+        enable_system_audio: true,
+        language: None,
+    });
+
     #[cfg(any(target_os = "macos", target_os = "windows"))]
-    let session = Session::start(&app, session_id.clone())
-        .map_err(|e| CommandError::Audio(e.to_string()))?;
+    let session = {
+        let cfg = RecordingConfig {
+            mic_device_label: options.mic_device_label.clone(),
+            enable_system_audio: options.enable_system_audio,
+            language: options.language.clone(),
+        };
+        Session::start(&app, session_id.clone(), cfg)
+            .map_err(|e| CommandError::Audio(e.to_string()))?
+    };
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        // Keep `app` referenced so the unused-variable lint stays
-        // quiet when we cross-compile for Linux CI.
+        // Keep `app` and `options` referenced so the unused-variable
+        // lint stays quiet when we cross-compile for Linux CI.
         let _ = app;
+        let _ = options;
         return Err(CommandError::UnsupportedPlatform);
     }
 
@@ -224,6 +269,28 @@ async fn request_audio_permissions() -> Result<PermissionsSnapshot, CommandError
 #[tauri::command]
 async fn request_audio_permissions() -> Result<(), CommandError> {
     Err(CommandError::UnsupportedPlatform)
+}
+
+/// Enumerate available cpal input devices for the Settings mic picker.
+/// Returns the cpal device names as `AudioInputDevice { label }`. Empty
+/// list is success (no input hardware / sandboxed CI). The frontend
+/// always prepends a synthetic "System default" option in front.
+#[tauri::command]
+async fn list_audio_inputs() -> Result<Vec<AudioInputDevice>, CommandError> {
+    // cpal's host enumeration is synchronous + not async-friendly;
+    // route through spawn_blocking to keep the IPC reactor unblocked.
+    tauri::async_runtime::spawn_blocking(|| {
+        crate::audio::cpal_mic::list_inputs()
+            .map(|labels| {
+                labels
+                    .into_iter()
+                    .map(|label| AudioInputDevice { label })
+                    .collect::<Vec<_>>()
+            })
+            .map_err(|e| CommandError::Audio(e.to_string()))
+    })
+    .await
+    .map_err(|e| CommandError::Audio(format!("join: {e}")))?
 }
 
 // --- Auth commands -------------------------------------------------------
@@ -419,6 +486,10 @@ pub fn run() {
         // `fs:allow-write-text-file` in capabilities/default.json.
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // US-25: settings persistence. Backs the `useSettingsStore`
+        // hydrate/save calls; resolves to a JSON file under the OS
+        // app-data dir, so settings survive app updates.
+        .plugin(tauri_plugin_store::Builder::new().build())
         .manage(Mutex::new(RecordingState::default()))
         .manage(OAuthState::default())
         .setup(|app| {
@@ -445,6 +516,7 @@ pub fn run() {
             stop_recording,
             check_audio_permissions,
             request_audio_permissions,
+            list_audio_inputs,
             auth_start_login,
             auth_get_session,
             auth_get_access_token,

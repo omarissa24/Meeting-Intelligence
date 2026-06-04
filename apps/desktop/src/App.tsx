@@ -5,10 +5,12 @@ import { LoginView } from "@/components/login-view";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { subscribeAuthEvents, useAuthStore } from "@/stores/auth-store";
+import { useSettingsStore } from "@/stores/settings-store";
 
 export default function App() {
   const status = useAuthStore((s) => s.status);
   const hydrate = useAuthStore((s) => s.hydrate);
+  const hydrateSettings = useSettingsStore((s) => s.hydrate);
 
   // Read the keyring on mount and subscribe to deep-link auth events.
   // Both must happen exactly once; effect cleanup tears down the
@@ -17,8 +19,14 @@ export default function App() {
   // bundled builds or the loopback HTTP server for `tauri:dev`); both
   // paths emit `auth://session-changed` which `subscribeAuthEvents`
   // wires into the store.
+  //
+  // Settings hydrate is independent of auth — load the persisted
+  // mic/system-audio/language defaults from disk so the Settings
+  // sheet renders with the user's last choices and the recording
+  // start path can read them via `getRecordingSnapshot()`.
   useEffect(() => {
     void hydrate();
+    void hydrateSettings();
     let unlisten: (() => void) | null = null;
     void subscribeAuthEvents().then((u) => {
       unlisten = u;
@@ -26,7 +34,7 @@ export default function App() {
     return () => {
       unlisten?.();
     };
-  }, [hydrate]);
+  }, [hydrate, hydrateSettings]);
 
   return (
     <TooltipProvider>

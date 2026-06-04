@@ -49,20 +49,32 @@ class DeepgramNovaSTT(STTProvider):
         self,
         session_id: str,
         audio_stream: AsyncIterator[bytes],
+        *,
+        language: str | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
+        # `None` and the literal "auto" both mean "let Deepgram auto-detect".
+        # Anything else (e.g. "en", "es") is forwarded as the `language` kwarg
+        # so the model picks an explicit language and skips detection.
+        connect_kwargs: dict[str, object] = {
+            "model": "nova-2",
+            "encoding": "linear16",
+            "sample_rate": 16000,
+            "channels": 1,
+            "diarize": True,
+            "interim_results": True,
+            "punctuate": True,
+            "smart_format": True,
+        }
+        if language is not None and language != "auto":
+            connect_kwargs["language"] = language
         producer_error: list[BaseException] = []
         try:
-            async with self._client.listen.v1.connect(
-                model="nova-2",
-                encoding="linear16",
-                sample_rate=16000,
-                channels=1,
-                diarize=True,
-                interim_results=True,
-                punctuate=True,
-                smart_format=True,
-            ) as conn:
-                log.info("deepgram.connect session_id=%s", session_id)
+            async with self._client.listen.v1.connect(**connect_kwargs) as conn:
+                log.info(
+                    "deepgram.connect session_id=%s language=%s",
+                    session_id,
+                    language or "auto",
+                )
                 producer = asyncio.create_task(
                     _pump_audio(conn, audio_stream, session_id, producer_error)
                 )

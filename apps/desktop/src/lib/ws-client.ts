@@ -47,6 +47,7 @@ export function connectTranscriptWs(
   sessionId: string,
   handlers: TranscriptWsHandlers,
   accessToken: string | null = null,
+  language: string | null = null,
 ): TranscriptWsClient {
   const url = `${BACKEND_WS_URL}/transcript/ws/${encodeURIComponent(sessionId)}`;
   // Browsers / Tauri's webview only allow tokens via subprotocol on
@@ -65,6 +66,10 @@ export function connectTranscriptWs(
         audioFormat: "pcm16le-mono-16khz",
         sendsBinaryAudio: false,
       },
+      // Older backend builds ignore unknown fields; newer ones (US-25)
+      // forward this to STTProvider.transcribe(language=...). Omit
+      // when null to keep the wire shape identical to pre-US-25 builds.
+      ...(language ? { language } : {}),
     };
     ws.send(JSON.stringify(hello));
     handlers.onOpen?.();

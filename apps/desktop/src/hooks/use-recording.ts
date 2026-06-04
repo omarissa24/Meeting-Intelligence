@@ -27,6 +27,7 @@ import {
   useRecordingStore,
   type AudioPermissionState,
 } from "@/stores/recording-store";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useTranscriptStore } from "@/stores/transcript-store";
 
 /**
@@ -190,6 +191,11 @@ export function useRecording() {
   }, [confirmStop, queryClient, requestStop, teardownWs]);
 
   const start = useCallback(async () => {
+    // 0. Freeze the user-recording settings for this session. Subsequent
+    //    Settings edits during the recording will not affect the live
+    //    session — they apply on the next start.
+    const snapshot = useSettingsStore.getState().getRecordingSnapshot();
+
     // 1. Permission gate. Re-check live so a fresh System-Settings
     //    grant is reflected immediately. If denied, abort with a
     //    user-actionable error; if not-determined, leave the store
@@ -206,7 +212,14 @@ export function useRecording() {
       );
       return;
     }
-    const aggregate = toAggregate(snap);
+    // When the user has system audio capture turned off in Settings,
+    // we don't need (and don't want) the macOS Screen Recording
+    // permission. Pretend it's granted in the aggregate so the start
+    // path doesn't block on a screen-only denial.
+    const effectiveSnap: PermissionsSnapshot = snapshot.enableSystem
+      ? snap
+      : { mic: snap.mic, screen: "granted" };
+    const aggregate = toAggregate(effectiveSnap);
     setPermissionState(aggregate);
 
     if (aggregate === "not-determined") {
@@ -216,7 +229,7 @@ export function useRecording() {
       return;
     }
     if (aggregate === "denied") {
-      cancelStart(denialMessage(snap.mic, snap.screen));
+      cancelStart(denialMessage(effectiveSnap.mic, effectiveSnap.screen));
       return;
     }
 
@@ -235,10 +248,17 @@ export function useRecording() {
       return;
     }
 
-    // 3. Kick off the Rust session with the backend-issued id.
+    // 3. Kick off the Rust session with the backend-issued id and the
+    //    frozen settings snapshot. The Rust side uses these to pick the
+    //    mic device, gate system audio, and log the language; the
+    //    language flows through to STT via the WS ClientHello below.
     let result;
     try {
-      result = await startRecording(meeting.id);
+      result = await startRecording(meeting.id, {
+        micDeviceLabel: snapshot.micDeviceLabel,
+        enableSystemAudio: snapshot.enableSystem,
+        language: snapshot.language,
+      });
     } catch (err) {
       cancelStart(err instanceof Error ? err.message : String(err));
       return;
@@ -255,8 +275,10 @@ export function useRecording() {
     sessionIdRef.current = result.sessionId;
     resetConnection();
 
-    const client = createReconnectingWsClient(result.sessionId, {
-      onMessage: (msg) => {
+    const client = createReconnectingWsClient(
+      result.sessionId,
+      {
+        onMessage: (msg) => {
         switch (msg.type) {
           case "transcript_line": {
             const lineRecvMs = Date.now();
@@ -338,7 +360,9 @@ export function useRecording() {
           void stop();
         }
       },
-    });
+      },
+      { language: snapshot.language },
+    );
     wsRef.current = client;
     wsUnsubRef.current = client.subscribe((snap) => {
       setConnPhase(snap.phase);

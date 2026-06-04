@@ -93,6 +93,10 @@ class ClientHelloPayload(_CamelModel):
     sessionId: str
     clientVersion: str
     capabilities: ClientCapabilitiesPayload
+    # Optional BCP-47 short code (e.g. "en", "es") or "auto". Older
+    # clients that predate US-25 omit this entirely; we coerce that to
+    # `None`, which the STT layer treats as "auto-detect".
+    language: str | None = None
 
 
 class ClientByePayload(_CamelModel):
@@ -460,7 +464,11 @@ async def transcript_ws(
     async def transcribe_consumer() -> None:
         nonlocal stt_failed, stt_failure_msg
         try:
-            async for event in stt.transcribe(session_id, audio_iter()):
+            async for event in stt.transcribe(
+                session_id,
+                audio_iter(),
+                language=hello_msg.language,
+            ):
                 await send_transcript_event(event)
         except STTProviderError as exc:
             stt_failed = True

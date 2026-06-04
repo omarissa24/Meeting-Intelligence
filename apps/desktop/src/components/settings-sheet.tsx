@@ -1,6 +1,14 @@
+import { useEffect, useState } from "react";
 import { LogOut, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -11,18 +19,80 @@ import {
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { BACKEND_HTTP_URL, CLIENT_VERSION } from "@/lib/config";
+import { listAudioInputs } from "@/lib/tauri-commands";
 import { useAuthStore } from "@/stores/auth-store";
+import {
+  LANGUAGE_CODES,
+  type LanguageCode,
+  useSettingsStore,
+} from "@/stores/settings-store";
+
+const SYSTEM_DEFAULT_VALUE = "__system_default__";
+
+const LANGUAGE_LABELS: Record<LanguageCode, string> = {
+  auto: "Auto-detect",
+  en: "English",
+  es: "Spanish",
+  fr: "French",
+  de: "German",
+  pt: "Portuguese",
+  it: "Italian",
+  nl: "Dutch",
+  ja: "Japanese",
+  zh: "Chinese",
+  hi: "Hindi",
+};
 
 export function SettingsSheet() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+
+  const micDeviceLabel = useSettingsStore((s) => s.micDeviceLabel);
+  const enableSystemAudio = useSettingsStore((s) => s.enableSystemAudio);
+  const language = useSettingsStore((s) => s.language);
+  const setMicDeviceLabel = useSettingsStore((s) => s.setMicDeviceLabel);
+  const setEnableSystemAudio = useSettingsStore((s) => s.setEnableSystemAudio);
+  const setLanguage = useSettingsStore((s) => s.setLanguage);
+
+  const [open, setOpen] = useState(false);
+  const [devices, setDevices] = useState<string[]>([]);
+  const [devicesError, setDevicesError] = useState<string | null>(null);
+
+  // Refresh the device list whenever the sheet opens. cpal device
+  // enumeration is cheap and devices change while the app is running
+  // (USB plug/unplug, Bluetooth pairing) — re-reading on open is
+  // simpler than wiring a hot-plug subscription.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setDevicesError(null);
+    listAudioInputs()
+      .then((list) => {
+        if (cancelled) return;
+        setDevices(list.map((d) => d.label));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setDevicesError(err instanceof Error ? err.message : String(err));
+        setDevices([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // Selected mic that is no longer in the list (e.g. unplugged USB
+  // mic). Surface it as "<name> — unavailable" rather than silently
+  // dropping it; the user picked it for a reason.
+  const selectedMicMissing =
+    micDeviceLabel !== null && !devices.includes(micDeviceLabel);
 
   // The user blob is opaque WorkOS JSON. `email` is the field we
   // surface; everything else is a no-op for the settings panel today.
   const email = typeof user?.email === "string" ? (user.email as string) : null;
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <Button type="button" variant="ghost" size="icon" aria-label="Open settings">
           <Settings className="size-4" />
@@ -32,7 +102,7 @@ export function SettingsSheet() {
         <SheetHeader>
           <SheetTitle className="font-display text-2xl font-normal">Settings</SheetTitle>
           <SheetDescription>
-            Foundation slice — most controls land in subsequent phases.
+            Recording defaults apply to your next session.
           </SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4 pb-6">
@@ -54,6 +124,90 @@ export function SettingsSheet() {
             </div>
             <p className="text-xs text-muted-foreground">
               Override via the <code>VITE_BACKEND_URL</code> env var.
+            </p>
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Microphone
+            </h3>
+            <Select
+              value={micDeviceLabel ?? SYSTEM_DEFAULT_VALUE}
+              onValueChange={(value) => {
+                void setMicDeviceLabel(
+                  value === SYSTEM_DEFAULT_VALUE ? null : value,
+                );
+              }}
+            >
+              <SelectTrigger className="w-full" aria-label="Microphone device">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SYSTEM_DEFAULT_VALUE}>System default</SelectItem>
+                {devices.map((label) => (
+                  <SelectItem key={label} value={label}>
+                    {label}
+                  </SelectItem>
+                ))}
+                {selectedMicMissing && micDeviceLabel ? (
+                  <SelectItem key={micDeviceLabel} value={micDeviceLabel}>
+                    {micDeviceLabel} — unavailable
+                  </SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
+            {devicesError ? (
+              <p className="text-xs text-muted-foreground">
+                Could not enumerate input devices: {devicesError}
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                System default re-resolves at every recording start.
+              </p>
+            )}
+          </section>
+
+          <section className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-foreground">Capture system audio</span>
+              <span className="text-xs text-muted-foreground">
+                Record audio from other apps (the meeting). When off, no
+                screen-recording prompt appears.
+              </span>
+            </div>
+            <Switch
+              aria-label="Capture system audio"
+              checked={enableSystemAudio}
+              onCheckedChange={(checked) => {
+                void setEnableSystemAudio(checked);
+              }}
+            />
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Transcription language
+            </h3>
+            <Select
+              value={language}
+              onValueChange={(value) => {
+                void setLanguage(value as LanguageCode);
+              }}
+            >
+              <SelectTrigger className="w-full" aria-label="Transcription language">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LANGUAGE_CODES.map((code) => (
+                  <SelectItem key={code} value={code}>
+                    {LANGUAGE_LABELS[code]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Auto-detect lets the model pick. Choose a language to lock it
+              and skip detection.
             </p>
           </section>
 

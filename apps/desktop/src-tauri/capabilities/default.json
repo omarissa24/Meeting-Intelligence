@@ -11,6 +11,7 @@
     "shell:allow-open",
     "dialog:allow-save",
     "fs:allow-write-text-file",
+    "store:default",
     {
       "identifier": "fs:scope",
       "allow": [
