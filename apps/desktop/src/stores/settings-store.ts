@@ -35,6 +35,9 @@ export const LANGUAGE_CODES = [
 
 export type LanguageCode = (typeof LANGUAGE_CODES)[number];
 
+/** US-27: theme preference. `"system"` follows the OS appearance. */
+export type ThemePreference = "system" | "light" | "dark";
+
 const SCHEMA_VERSION = 1;
 const STORE_FILE = "settings.json";
 
@@ -42,10 +45,12 @@ const KEY_SCHEMA_VERSION = "schema_version";
 const KEY_MIC_LABEL = "mic_device_label";
 const KEY_SYSTEM_AUDIO = "enable_system_audio";
 const KEY_LANGUAGE = "language";
+const KEY_THEME = "theme";
 
 const DEFAULT_MIC_LABEL: string | null = null;
 const DEFAULT_SYSTEM_AUDIO = true;
 const DEFAULT_LANGUAGE: LanguageCode = "auto";
+const DEFAULT_THEME: ThemePreference = "system";
 
 export interface RecordingSnapshot {
   /** null ⇒ "System default" (re-resolve at start). */
@@ -59,12 +64,14 @@ export interface SettingsStoreState {
   micDeviceLabel: string | null;
   enableSystemAudio: boolean;
   language: LanguageCode;
+  theme: ThemePreference;
   hydrated: boolean;
 
   hydrate: () => Promise<void>;
   setMicDeviceLabel: (label: string | null) => Promise<void>;
   setEnableSystemAudio: (enabled: boolean) => Promise<void>;
   setLanguage: (code: LanguageCode) => Promise<void>;
+  setTheme: (preference: ThemePreference) => Promise<void>;
 
   /**
    * Read at recording-start to freeze the values used for this session.
@@ -87,6 +94,7 @@ async function getStore(): Promise<Store> {
         [KEY_MIC_LABEL]: DEFAULT_MIC_LABEL,
         [KEY_SYSTEM_AUDIO]: DEFAULT_SYSTEM_AUDIO,
         [KEY_LANGUAGE]: DEFAULT_LANGUAGE,
+        [KEY_THEME]: DEFAULT_THEME,
       },
     });
   }
@@ -99,10 +107,7 @@ export function _resetStoreForTests(): void {
 }
 
 function isLanguageCode(value: unknown): value is LanguageCode {
-  return (
-    typeof value === "string" &&
-    (LANGUAGE_CODES as readonly string[]).includes(value)
-  );
+  return typeof value === "string" && (LANGUAGE_CODES as readonly string[]).includes(value);
 }
 
 function isBoolean(value: unknown): value is boolean {
@@ -113,10 +118,15 @@ function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+function isThemePreference(value: unknown): value is ThemePreference {
+  return value === "system" || value === "light" || value === "dark";
+}
+
 interface LoadedSettings {
   micDeviceLabel: string | null;
   enableSystemAudio: boolean;
   language: LanguageCode;
+  theme: ThemePreference;
 }
 
 async function readAndMigrate(store: Store): Promise<LoadedSettings> {
@@ -127,13 +137,12 @@ async function readAndMigrate(store: Store): Promise<LoadedSettings> {
   // ignore it and use defaults. (Don't overwrite — a downgrade
   // shouldn't blow away the newer build's settings.)
   if (version > SCHEMA_VERSION) {
-    console.warn(
-      `settings-store: unknown schema_version=${version}; using defaults this session`,
-    );
+    console.warn(`settings-store: unknown schema_version=${version}; using defaults this session`);
     return {
       micDeviceLabel: DEFAULT_MIC_LABEL,
       enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
       language: DEFAULT_LANGUAGE,
+      theme: DEFAULT_THEME,
     };
   }
 
@@ -143,21 +152,27 @@ async function readAndMigrate(store: Store): Promise<LoadedSettings> {
     await store.set(KEY_MIC_LABEL, DEFAULT_MIC_LABEL);
     await store.set(KEY_SYSTEM_AUDIO, DEFAULT_SYSTEM_AUDIO);
     await store.set(KEY_LANGUAGE, DEFAULT_LANGUAGE);
+    await store.set(KEY_THEME, DEFAULT_THEME);
     return {
       micDeviceLabel: DEFAULT_MIC_LABEL,
       enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
       language: DEFAULT_LANGUAGE,
+      theme: DEFAULT_THEME,
     };
   }
 
   const micRaw = await store.get(KEY_MIC_LABEL);
   const sysRaw = await store.get(KEY_SYSTEM_AUDIO);
   const langRaw = await store.get(KEY_LANGUAGE);
+  // `theme` (US-27) was added without a schema bump: an existing v1
+  // file simply lacks the key, so the tolerant fallback yields "system".
+  const themeRaw = await store.get(KEY_THEME);
 
   return {
     micDeviceLabel: isNullableString(micRaw) ? micRaw : DEFAULT_MIC_LABEL,
     enableSystemAudio: isBoolean(sysRaw) ? sysRaw : DEFAULT_SYSTEM_AUDIO,
     language: isLanguageCode(langRaw) ? langRaw : DEFAULT_LANGUAGE,
+    theme: isThemePreference(themeRaw) ? themeRaw : DEFAULT_THEME,
   };
 }
 
@@ -165,6 +180,7 @@ export const useSettingsStore = create<SettingsStoreState>()((set, get) => ({
   micDeviceLabel: DEFAULT_MIC_LABEL,
   enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
   language: DEFAULT_LANGUAGE,
+  theme: DEFAULT_THEME,
   hydrated: false,
 
   hydrate: async () => {
@@ -183,6 +199,7 @@ export const useSettingsStore = create<SettingsStoreState>()((set, get) => ({
         micDeviceLabel: DEFAULT_MIC_LABEL,
         enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
         language: DEFAULT_LANGUAGE,
+        theme: DEFAULT_THEME,
         hydrated: true,
       });
     }
@@ -215,6 +232,16 @@ export const useSettingsStore = create<SettingsStoreState>()((set, get) => ({
       await store.set(KEY_LANGUAGE, code);
     } catch (err) {
       console.error("settings-store: setLanguage persist failed", err);
+    }
+  },
+
+  setTheme: async (preference) => {
+    set({ theme: preference });
+    try {
+      const store = await getStore();
+      await store.set(KEY_THEME, preference);
+    } catch (err) {
+      console.error("settings-store: setTheme persist failed", err);
     }
   },
 

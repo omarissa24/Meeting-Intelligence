@@ -24,10 +24,17 @@ import { useAuthStore } from "@/stores/auth-store";
 import {
   LANGUAGE_CODES,
   type LanguageCode,
+  type ThemePreference,
   useSettingsStore,
 } from "@/stores/settings-store";
 
 const SYSTEM_DEFAULT_VALUE = "__system_default__";
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
 
 const LANGUAGE_LABELS: Record<LanguageCode, string> = {
   auto: "Auto-detect",
@@ -50,9 +57,11 @@ export function SettingsSheet() {
   const micDeviceLabel = useSettingsStore((s) => s.micDeviceLabel);
   const enableSystemAudio = useSettingsStore((s) => s.enableSystemAudio);
   const language = useSettingsStore((s) => s.language);
+  const theme = useSettingsStore((s) => s.theme);
   const setMicDeviceLabel = useSettingsStore((s) => s.setMicDeviceLabel);
   const setEnableSystemAudio = useSettingsStore((s) => s.setEnableSystemAudio);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
+  const setTheme = useSettingsStore((s) => s.setTheme);
 
   const [open, setOpen] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
@@ -84,8 +93,7 @@ export function SettingsSheet() {
   // Selected mic that is no longer in the list (e.g. unplugged USB
   // mic). Surface it as "<name> — unavailable" rather than silently
   // dropping it; the user picked it for a reason.
-  const selectedMicMissing =
-    micDeviceLabel !== null && !devices.includes(micDeviceLabel);
+  const selectedMicMissing = micDeviceLabel !== null && !devices.includes(micDeviceLabel);
 
   // The user blob is opaque WorkOS JSON. `email` is the field we
   // surface; everything else is a no-op for the settings panel today.
@@ -101,9 +109,7 @@ export function SettingsSheet() {
       <SheetContent>
         <SheetHeader>
           <SheetTitle className="font-display text-2xl font-normal">Settings</SheetTitle>
-          <SheetDescription>
-            Recording defaults apply to your next session.
-          </SheetDescription>
+          <SheetDescription>Recording defaults apply to your next session.</SheetDescription>
         </SheetHeader>
         <div className="flex flex-col gap-6 px-4 pb-6">
           {email ? (
@@ -134,9 +140,7 @@ export function SettingsSheet() {
             <Select
               value={micDeviceLabel ?? SYSTEM_DEFAULT_VALUE}
               onValueChange={(value) => {
-                void setMicDeviceLabel(
-                  value === SYSTEM_DEFAULT_VALUE ? null : value,
-                );
+                void setMicDeviceLabel(value === SYSTEM_DEFAULT_VALUE ? null : value);
               }}
             >
               <SelectTrigger className="w-full" aria-label="Microphone device">
@@ -171,8 +175,8 @@ export function SettingsSheet() {
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium text-foreground">Capture system audio</span>
               <span className="text-xs text-muted-foreground">
-                Record audio from other apps (the meeting). When off, no
-                screen-recording prompt appears.
+                Record audio from other apps (the meeting). When off, no screen-recording prompt
+                appears.
               </span>
             </div>
             <Switch
@@ -206,8 +210,33 @@ export function SettingsSheet() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Auto-detect lets the model pick. Choose a language to lock it
-              and skip detection.
+              Auto-detect lets the model pick. Choose a language to lock it and skip detection.
+            </p>
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Appearance
+            </h3>
+            <Select
+              value={theme}
+              onValueChange={(value) => {
+                void setTheme(value as ThemePreference);
+              }}
+            >
+              <SelectTrigger className="w-full" aria-label="Theme">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {THEME_OPTIONS.map(({ value, label }) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              System follows your OS appearance. Light or Dark overrides it.
             </p>
           </section>
 

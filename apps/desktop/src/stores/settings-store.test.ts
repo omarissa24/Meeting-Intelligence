@@ -39,6 +39,7 @@ describe("settings-store", () => {
     expect(s.micDeviceLabel).toBeNull();
     expect(s.enableSystemAudio).toBe(true);
     expect(s.language).toBe("auto");
+    expect(s.theme).toBe("system");
   });
 
   it("hydrates with defaults and seeds the store on a fresh install (no schema_version)", async () => {
@@ -51,6 +52,7 @@ describe("settings-store", () => {
     expect(s.micDeviceLabel).toBeNull();
     expect(s.enableSystemAudio).toBe(true);
     expect(s.language).toBe("auto");
+    expect(s.theme).toBe("system");
 
     // First-run path writes the schema version + defaults so a later
     // load sees them rather than re-seeding.
@@ -58,6 +60,7 @@ describe("settings-store", () => {
     expect(fakeStoreState["mic_device_label"]).toBeNull();
     expect(fakeStoreState["enable_system_audio"]).toBe(true);
     expect(fakeStoreState["language"]).toBe("auto");
+    expect(fakeStoreState["theme"]).toBe("system");
   });
 
   it("hydrates with persisted values when schema_version matches", async () => {
@@ -65,6 +68,7 @@ describe("settings-store", () => {
     fakeStoreState["mic_device_label"] = "AirPods Pro";
     fakeStoreState["enable_system_audio"] = false;
     fakeStoreState["language"] = "es";
+    fakeStoreState["theme"] = "dark";
 
     const { useSettingsStore, _resetStoreForTests } = await import("./settings-store");
     _resetStoreForTests();
@@ -74,6 +78,24 @@ describe("settings-store", () => {
     expect(s.micDeviceLabel).toBe("AirPods Pro");
     expect(s.enableSystemAudio).toBe(false);
     expect(s.language).toBe("es");
+    expect(s.theme).toBe("dark");
+  });
+
+  it('theme falls back to "system" when a v1 file predates the theme key or holds a bogus value', async () => {
+    fakeStoreState["schema_version"] = 1;
+    fakeStoreState["language"] = "en";
+    // no `theme` key at all (older v1 file)
+    const { useSettingsStore, _resetStoreForTests } = await import("./settings-store");
+    _resetStoreForTests();
+    await useSettingsStore.getState().hydrate();
+    expect(useSettingsStore.getState().theme).toBe("system");
+
+    // and a garbage value is rejected the same way
+    fakeStoreState["theme"] = "neon";
+    _resetStoreForTests();
+    useSettingsStore.setState({ hydrated: false });
+    await useSettingsStore.getState().hydrate();
+    expect(useSettingsStore.getState().theme).toBe("system");
   });
 
   it("persists each setter to the underlying store", async () => {
@@ -84,15 +106,18 @@ describe("settings-store", () => {
     await useSettingsStore.getState().setMicDeviceLabel("USB Mic");
     await useSettingsStore.getState().setEnableSystemAudio(false);
     await useSettingsStore.getState().setLanguage("ja");
+    await useSettingsStore.getState().setTheme("light");
 
     expect(fakeStoreState["mic_device_label"]).toBe("USB Mic");
     expect(fakeStoreState["enable_system_audio"]).toBe(false);
     expect(fakeStoreState["language"]).toBe("ja");
+    expect(fakeStoreState["theme"]).toBe("light");
 
     const s = useSettingsStore.getState();
     expect(s.micDeviceLabel).toBe("USB Mic");
     expect(s.enableSystemAudio).toBe(false);
     expect(s.language).toBe("ja");
+    expect(s.theme).toBe("light");
   });
 
   it("getRecordingSnapshot returns a frozen-at-call-time object literal", async () => {

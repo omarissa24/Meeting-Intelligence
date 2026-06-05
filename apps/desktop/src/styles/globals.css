@@ -67,6 +67,11 @@
   --meter-warn: oklch(0.78 0.14 75);
   --meter-bad: oklch(0.55 0.2 27);
 
+  /* Modal scrim (US-27). A subtle dark wash in light mode; the .dark
+   * override goes stronger so the overlay reads on a dark background
+   * (raw black/10 was imperceptible there). */
+  --overlay: oklch(0.15 0.02 260 / 0.18);
+
   --radius: 0.625rem;
 
   --motion-fast: 120ms;
@@ -121,6 +126,8 @@
   --meter-good: oklch(0.7 0.12 150);
   --meter-warn: oklch(0.82 0.13 75);
   --meter-bad: oklch(0.6 0.2 25);
+
+  --overlay: oklch(0 0 0 / 0.55);
 }
 
 @theme inline {
@@ -165,6 +172,8 @@
   --color-meter-good: var(--meter-good);
   --color-meter-warn: var(--meter-warn);
   --color-meter-bad: var(--meter-bad);
+
+  --color-overlay: var(--overlay);
 
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
