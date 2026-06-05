@@ -54,10 +54,13 @@ export function RecordControl({ phase, elapsedMs, onStart, onStop }: RecordContr
               : "bg-foreground text-background elevation-card hover:bg-foreground/90",
           )}
         >
+          {/* Icon-only hero button — no `data-icon` here: that attribute
+              drives the Button's icon-beside-text padding (`pl-2`), which
+              would shove a lone glyph off-center. */}
           {live ? (
-            <Square data-icon="inline-start" className="size-5 fill-current" />
+            <Square className="size-5 fill-current" />
           ) : (
-            <Mic data-icon="inline-start" className="size-6" />
+            <Mic className="size-6" />
           )}
         </Button>
       </div>

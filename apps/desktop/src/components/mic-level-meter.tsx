@@ -99,11 +99,17 @@ export function MicLevelMeter() {
   const hint = levelHint(level.micRawDbfs, level.micResampledDbfs);
 
   return (
-    <div className="flex flex-col gap-1.5" aria-label="Microphone level">
+    <div className="relative flex flex-col gap-1.5" aria-label="Microphone level">
       <LevelBar label="To STT" dbfs={level.micResampledDbfs} />
       <LevelBar label="Mic" dbfs={level.micRawDbfs} />
+      {/* Floated out of flow so the low-input hint never grows the meter
+          column. In flow it pushed the record button up and the transcript
+          down the moment it appeared; absolute keeps the row height fixed
+          and lets the hint render into the section's padding below. */}
       {hint ? (
-        <p className="max-w-[14rem] text-[0.625rem] leading-tight text-muted-foreground">{hint}</p>
+        <p className="absolute top-full left-0 mt-1 max-w-[14rem] text-[0.625rem] leading-tight text-muted-foreground">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

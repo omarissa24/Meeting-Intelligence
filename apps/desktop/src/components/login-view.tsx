@@ -29,8 +29,8 @@ export function LoginView() {
   }, [errorMessage]);
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-background app-atmosphere px-8 text-foreground">
-      <div className="flex w-full max-w-sm animate-rise-in flex-col items-stretch gap-8 text-center">
+    <div className="flex h-screen flex-col items-center overflow-y-auto bg-background app-atmosphere px-8 py-8 text-foreground">
+      <div className="my-auto flex w-full max-w-sm animate-rise-in flex-col items-stretch gap-8 text-center">
         <div className="flex flex-col gap-3">
           <span className="inline-flex items-center justify-center gap-2 text-eyebrow">
             <span aria-hidden className="size-1.5 rounded-full bg-accent" />

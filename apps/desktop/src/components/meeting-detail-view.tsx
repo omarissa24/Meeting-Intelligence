@@ -281,32 +281,36 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
         ) : null}
       </header>
 
-      {query.data ? <MeetingAudioPlayer meeting={query.data} state={audioState} /> : null}
+      {/* Everything below the fixed header scrolls as one document — the
+       * audio player, participants, and summary used to sit as fixed
+       * siblings above the transcript, so a tall summary overflowed the
+       * card with no way to reach it. One scroll region fixes that. */}
+      <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+        <ScrollArea type="auto" className="h-full">
+          {query.data ? <MeetingAudioPlayer meeting={query.data} state={audioState} /> : null}
 
-      {query.data ? <ParticipantsSection meeting={query.data} /> : null}
+          {query.data ? <ParticipantsSection meeting={query.data} /> : null}
 
-      {query.data ? (
-        <div className="border-b px-6 py-4">
-          <MeetingSummary
-            meetingId={meetingId}
-            summary={query.data.summary}
-            status={effectiveSummaryStatus ?? query.data.summaryStatus}
-            onRegenerate={() => summarise.mutate()}
-            isRegenerating={summarise.isPending}
-            onPatchActionItem={(itemId, body) => patchActionItem.mutate({ itemId, body })}
-          />
-        </div>
-      ) : null}
+          {query.data ? (
+            <div className="border-b px-6 py-4">
+              <MeetingSummary
+                meetingId={meetingId}
+                summary={query.data.summary}
+                status={effectiveSummaryStatus ?? query.data.summaryStatus}
+                onRegenerate={() => summarise.mutate()}
+                isRegenerating={summarise.isPending}
+                onPatchActionItem={(itemId, body) => patchActionItem.mutate({ itemId, body })}
+              />
+            </div>
+          ) : null}
 
-      <CardContent className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
-        {query.isPending ? (
-          <DetailSkeleton />
-        ) : query.isError ? (
-          <ErrorView onRetry={() => query.refetch()} />
-        ) : query.data && query.data.segments.length === 0 ? (
-          <EmptyTranscript />
-        ) : query.data ? (
-          <ScrollArea className="h-full">
+          {query.isPending ? (
+            <DetailSkeleton />
+          ) : query.isError ? (
+            <ErrorView onRetry={() => query.refetch()} />
+          ) : query.data && query.data.segments.length === 0 ? (
+            <EmptyTranscript />
+          ) : query.data ? (
             <ol className="flex flex-col gap-2 px-3 py-5">
               {query.data.segments.map((seg) => (
                 <SegmentItem
@@ -331,8 +335,8 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
                 />
               ))}
             </ol>
-          </ScrollArea>
-        ) : null}
+          ) : null}
+        </ScrollArea>
       </CardContent>
     </Card>
   );

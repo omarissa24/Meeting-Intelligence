@@ -119,7 +119,7 @@ export function HistoryView() {
           <EmptyState />
         ) : (
           <>
-            <ScrollArea className="flex-1">
+            <ScrollArea type="auto" className="min-h-0 flex-1">
               <ol className="flex flex-col">
                 {meetings.map((m) => (
                   <li key={m.id}>

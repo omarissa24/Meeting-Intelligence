@@ -114,7 +114,7 @@ export function SettingsSheet() {
           <SheetTitle className="font-display text-2xl font-normal">Settings</SheetTitle>
           <SheetDescription>Recording defaults apply to your next session.</SheetDescription>
         </SheetHeader>
-        <div className="flex flex-col gap-6 px-4 pb-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-6">
           {email ? (
             <section className="flex flex-col gap-2">
               <h3 className="text-eyebrow">Signed in as</h3>

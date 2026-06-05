@@ -44,7 +44,7 @@ export function SearchResults({
   if (isError) return <ErrorView onRetry={onRetry} />;
   if (hits.length === 0) return <NoResults query={query} />;
   return (
-    <ScrollArea className="flex-1">
+    <ScrollArea type="auto" className="min-h-0 flex-1">
       <ol className="flex flex-col">
         {hits.map((hit) => (
           <li key={hit.segmentId}>
