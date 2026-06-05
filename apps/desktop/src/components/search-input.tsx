@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -24,16 +24,34 @@ export interface SearchInputProps {
   className?: string;
 }
 
+/** Imperative handle so callers (US-28 ⌘/Ctrl+F) can focus the field. */
+export interface SearchInputHandle {
+  focus: () => void;
+}
+
 const DEBOUNCE_MS = 300;
 
-export function SearchInput({
-  value,
-  onSubmit,
-  placeholder = "Search transcripts…",
-  className,
-}: SearchInputProps) {
+export const SearchInput = forwardRef<SearchInputHandle, SearchInputProps>(function SearchInput(
+  { value, onSubmit, placeholder = "Search transcripts…", className },
+  ref,
+) {
   const [draft, setDraft] = useState(value);
   const lastSubmittedRef = useRef(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        // Put the caret at the end so the user types onto their query.
+        el.select();
+      },
+    }),
+    [],
+  );
 
   // Keep draft in sync if parent forces a value reset (e.g. user
   // navigates away and back).
@@ -66,6 +84,7 @@ export function SearchInput({
         aria-hidden
       />
       <Input
+        ref={inputRef}
         type="search"
         value={draft}
         placeholder={placeholder}
@@ -96,4 +115,4 @@ export function SearchInput({
       ) : null}
     </div>
   );
-}
+});

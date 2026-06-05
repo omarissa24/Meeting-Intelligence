@@ -1,13 +1,8 @@
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { SearchInput } from "./search-input";
+import { SearchInput, type SearchInputHandle } from "./search-input";
 
 afterEach(() => cleanup());
 
@@ -64,5 +59,15 @@ describe("SearchInput", () => {
     fireEvent.change(input, { target: { value: "" } });
     // No timer needed — the empty-value branch fires synchronously.
     expect(onSubmit).toHaveBeenCalledWith("");
+  });
+
+  it("exposes an imperative focus() that reaches the DOM input (US-28 ⌘F)", () => {
+    const ref = createRef<SearchInputHandle>();
+    render(<SearchInput ref={ref} value="" onSubmit={() => undefined} />);
+    const input = screen.getByRole("searchbox", { name: "Search meetings" });
+
+    expect(document.activeElement).not.toBe(input);
+    act(() => ref.current?.focus());
+    expect(document.activeElement).toBe(input);
   });
 });

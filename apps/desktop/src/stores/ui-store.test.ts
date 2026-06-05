@@ -10,6 +10,8 @@ beforeEach(() => {
       view: initial.view,
       selectedMeetingId: initial.selectedMeetingId,
       pendingSegmentStartMs: initial.pendingSegmentStartMs,
+      shortcutsOpen: initial.shortcutsOpen,
+      searchFocusPending: initial.searchFocusPending,
     },
     false,
   );
@@ -21,6 +23,8 @@ afterEach(() => {
       view: initial.view,
       selectedMeetingId: initial.selectedMeetingId,
       pendingSegmentStartMs: initial.pendingSegmentStartMs,
+      shortcutsOpen: initial.shortcutsOpen,
+      searchFocusPending: initial.searchFocusPending,
     },
     false,
   );
@@ -77,5 +81,30 @@ describe("ui-store", () => {
     useUiStore.getState().openMeeting("meeting-1", { initialSegmentStartMs: 42 });
     useUiStore.getState().openMeeting("meeting-2");
     expect(useUiStore.getState().pendingSegmentStartMs).toBeNull();
+  });
+
+  it("setShortcutsOpen toggles the help panel flag", () => {
+    expect(useUiStore.getState().shortcutsOpen).toBe(false);
+    useUiStore.getState().setShortcutsOpen(true);
+    expect(useUiStore.getState().shortcutsOpen).toBe(true);
+    useUiStore.getState().setShortcutsOpen(false);
+    expect(useUiStore.getState().shortcutsOpen).toBe(false);
+  });
+
+  it("requestSearchFocus jumps to history and stages a focus request", () => {
+    useUiStore.setState({ view: "detail", selectedMeetingId: "abc" }, false);
+    useUiStore.getState().requestSearchFocus();
+    const s = useUiStore.getState();
+    expect(s.view).toBe("history");
+    expect(s.selectedMeetingId).toBeNull();
+    expect(s.searchFocusPending).toBe(true);
+  });
+
+  it("consumeSearchFocus clears the staged focus request only", () => {
+    useUiStore.getState().requestSearchFocus();
+    useUiStore.getState().consumeSearchFocus();
+    const s = useUiStore.getState();
+    expect(s.view).toBe("history");
+    expect(s.searchFocusPending).toBe(false);
   });
 });

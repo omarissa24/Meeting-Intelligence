@@ -20,13 +20,8 @@ import {
   type PermissionsSnapshot,
   type PermState,
 } from "@/lib/tauri-commands";
-import {
-  useConnectionStore,
-} from "@/stores/connection-store";
-import {
-  useRecordingStore,
-  type AudioPermissionState,
-} from "@/stores/recording-store";
+import { useConnectionStore } from "@/stores/connection-store";
+import { useRecordingStore, type AudioPermissionState } from "@/stores/recording-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useTranscriptStore } from "@/stores/transcript-store";
 
@@ -48,9 +43,7 @@ export function useRecording() {
   const permissionState = useRecordingStore((s) => s.permissionState);
   const setPermissionState = useRecordingStore((s) => s.setPermissionState);
   const beginPermissionCheck = useRecordingStore((s) => s.beginPermissionCheck);
-  const beginPermissionRequest = useRecordingStore(
-    (s) => s.beginPermissionRequest,
-  );
+  const beginPermissionRequest = useRecordingStore((s) => s.beginPermissionRequest);
   const requestStart = useRecordingStore((s) => s.requestStart);
   const confirmStart = useRecordingStore((s) => s.confirmStart);
   const cancelStart = useRecordingStore((s) => s.cancelStart);
@@ -155,9 +148,7 @@ export function useRecording() {
       cancelStart(next === "denied" ? denialMessage(snap.mic, snap.screen) : "");
       return next;
     } catch (err) {
-      cancelStart(
-        err instanceof Error ? err.message : "permission request failed",
-      );
+      cancelStart(err instanceof Error ? err.message : "permission request failed");
       return "denied";
     }
   }, [beginPermissionRequest, cancelStart, setPermissionState]);
@@ -279,87 +270,80 @@ export function useRecording() {
       result.sessionId,
       {
         onMessage: (msg) => {
-        switch (msg.type) {
-          case "transcript_line": {
-            const lineRecvMs = Date.now();
-            appendLine(msg.line);
-            // Structured per-line latency log for offline aggregation by
-            // scripts/parse-latency-log.mjs. Headline metric is e2eMs =
-            // last chunk WS-send → final-line arrival; this captures
-            // network → backend → Deepgram → backend → frontend round
-            // trip. The fixed ~1 s encoder buffer that precedes wsSendMs
-            // is a known constant — worst-case capture→render ≈ e2eMs +
-            // CHUNK_DURATION_MS. Only log finals to keep volume sane.
-            if (
-              msg.line.isFinal &&
-              lastChunkSentAtMsRef.current != null
-            ) {
-              const wsSendMs = lastChunkSentAtMsRef.current;
-              const sample = {
-                seq: lastChunkSentSeqRef.current,
-                wsSendMs,
-                lineRecvMs,
-                e2eMs: lineRecvMs - wsSendMs,
-                isFinal: msg.line.isFinal,
-                textLen: msg.line.text.length,
-                deepgramStartMs: msg.line.startMs,
-                deepgramEndMs: msg.line.endMs,
-              };
-              console.debug("[latency] " + JSON.stringify(sample));
+          switch (msg.type) {
+            case "transcript_line": {
+              const lineRecvMs = Date.now();
+              appendLine(msg.line);
+              // Structured per-line latency log for offline aggregation by
+              // scripts/parse-latency-log.mjs. Headline metric is e2eMs =
+              // last chunk WS-send → final-line arrival; this captures
+              // network → backend → Deepgram → backend → frontend round
+              // trip. The fixed ~1 s encoder buffer that precedes wsSendMs
+              // is a known constant — worst-case capture→render ≈ e2eMs +
+              // CHUNK_DURATION_MS. Only log finals to keep volume sane.
+              if (msg.line.isFinal && lastChunkSentAtMsRef.current != null) {
+                const wsSendMs = lastChunkSentAtMsRef.current;
+                const sample = {
+                  seq: lastChunkSentSeqRef.current,
+                  wsSendMs,
+                  lineRecvMs,
+                  e2eMs: lineRecvMs - wsSendMs,
+                  isFinal: msg.line.isFinal,
+                  textLen: msg.line.text.length,
+                  deepgramStartMs: msg.line.startMs,
+                  deepgramEndMs: msg.line.endMs,
+                };
+                console.debug("[latency] " + JSON.stringify(sample));
+              }
+              break;
             }
-            break;
+            case "error":
+              // Non-recoverable STT failures are terminal: append a system
+              // note in the transcript and auto-stop the session. The
+              // recording-store will already be in `recording`; stop()
+              // walks it through the normal stopping/stopped path.
+              if (msg.code === "STT_PROVIDER_FAILURE" && !msg.recoverable) {
+                const sid = sessionIdRef.current;
+                if (sid) {
+                  appendSystemNote({
+                    sessionId: sid,
+                    text: "Speech-to-text service unavailable. Session stopped.",
+                  });
+                }
+                if (!autoStopFiredRef.current) {
+                  autoStopFiredRef.current = true;
+                  void stop();
+                }
+              }
+              break;
+            case "session_started":
+            case "session_ended":
+              // Surface via UI later if needed.
+              break;
           }
-          case "error":
-            // Non-recoverable STT failures are terminal: append a system
-            // note in the transcript and auto-stop the session. The
-            // recording-store will already be in `recording`; stop()
-            // walks it through the normal stopping/stopped path.
-            if (
-              msg.code === "STT_PROVIDER_FAILURE" &&
-              !msg.recoverable
-            ) {
-              const sid = sessionIdRef.current;
-              if (sid) {
-                appendSystemNote({
-                  sessionId: sid,
-                  text:
-                    "Speech-to-text service unavailable. Session stopped.",
-                });
-              }
-              if (!autoStopFiredRef.current) {
-                autoStopFiredRef.current = true;
-                void stop();
-              }
-            }
-            break;
-          case "session_started":
-          case "session_ended":
-            // Surface via UI later if needed.
-            break;
-        }
-      },
-      onReconnected: () => {
-        const sid = sessionIdRef.current;
-        if (sid) {
-          appendSystemNote({
-            sessionId: sid,
-            text: "Reconnected. A short gap may appear in the transcript while we caught up.",
-          });
-        }
-      },
-      onReconnectFailed: () => {
-        const sid = sessionIdRef.current;
-        if (sid) {
-          appendSystemNote({
-            sessionId: sid,
-            text: "Connection lost. Session stopped automatically after 5 minutes of failed reconnects.",
-          });
-        }
-        if (!autoStopFiredRef.current) {
-          autoStopFiredRef.current = true;
-          void stop();
-        }
-      },
+        },
+        onReconnected: () => {
+          const sid = sessionIdRef.current;
+          if (sid) {
+            appendSystemNote({
+              sessionId: sid,
+              text: "Reconnected. A short gap may appear in the transcript while we caught up.",
+            });
+          }
+        },
+        onReconnectFailed: () => {
+          const sid = sessionIdRef.current;
+          if (sid) {
+            appendSystemNote({
+              sessionId: sid,
+              text: "Connection lost. Session stopped automatically after 5 minutes of failed reconnects.",
+            });
+          }
+          if (!autoStopFiredRef.current) {
+            autoStopFiredRef.current = true;
+            void stop();
+          }
+        },
       },
       { language: snapshot.language },
     );
@@ -386,21 +370,18 @@ export function useRecording() {
           });
         },
       );
-      errorUnlistenRef.current = await subscribeAudioErrors(
-        result.sessionId,
-        (payload) => {
-          if (!payload.recoverable) {
-            // Fatal capture-side error: stop the session and surface
-            // the reason via the recording-store's error path.
-            void stop();
-            cancelStart(`${payload.code}: ${payload.message}`);
-            return;
-          }
-          // Recoverable: surface as a toast so the user knows audio
-          // was lost, but don't tear down the session.
-          toast.warning(`${payload.code}: ${payload.message}`);
-        },
-      );
+      errorUnlistenRef.current = await subscribeAudioErrors(result.sessionId, (payload) => {
+        if (!payload.recoverable) {
+          // Fatal capture-side error: stop the session and surface
+          // the reason via the recording-store's error path.
+          void stop();
+          cancelStart(`${payload.code}: ${payload.message}`);
+          return;
+        }
+        // Recoverable: surface as a toast so the user knows audio
+        // was lost, but don't tear down the session.
+        toast.warning(`${payload.code}: ${payload.message}`);
+      });
     } catch (err) {
       console.error("failed to subscribe to audio events", err);
     }
@@ -408,7 +389,6 @@ export function useRecording() {
     appendLine,
     appendSystemNote,
     beginPermissionCheck,
-    beginPermissionRequest,
     cancelStart,
     clearLines,
     confirmStart,
@@ -448,8 +428,7 @@ export function useRecording() {
  */
 function toAggregate(snap: PermissionsSnapshot): AudioPermissionState {
   if (snap.mic === "denied" || snap.screen === "denied") return "denied";
-  if (snap.mic === "not-determined" || snap.screen === "not-determined")
-    return "not-determined";
+  if (snap.mic === "not-determined" || snap.screen === "not-determined") return "not-determined";
   if (snap.mic === "granted" && snap.screen === "granted") return "granted";
   return "unknown";
 }

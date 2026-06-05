@@ -29,21 +29,42 @@ export interface UiStoreState {
    */
   pendingSegmentStartMs: number | null;
 
+  /**
+   * Phase 4 / US-28 — whether the discoverable Keyboard Shortcuts panel
+   * is open. Lives here (not local to AppShell) so two entry points can
+   * drive it: the ⌘/Ctrl+? handler and the Settings "Keyboard shortcuts"
+   * row, which is rendered in a different subtree.
+   */
+  shortcutsOpen: boolean;
+  /**
+   * Phase 4 / US-28 — a staged request to focus the History search bar,
+   * mirroring `pendingSegmentStartMs`: the ⌘/Ctrl+F handler sets it,
+   * HistoryView consumes it in an effect (`consumeSearchFocus`) once the
+   * input is focused. A flag (not a ref) so a fresh History mount that
+   * wasn't triggered by ⌘F doesn't steal focus.
+   */
+  searchFocusPending: boolean;
+
   goRecording: () => void;
   goHistory: () => void;
   openMeeting: (id: string, opts?: { initialSegmentStartMs?: number }) => void;
   consumePendingSegment: () => void;
+  setShortcutsOpen: (open: boolean) => void;
+  /** Jump to History (if not already there) and stage a search focus. */
+  requestSearchFocus: () => void;
+  consumeSearchFocus: () => void;
 }
 
 export const useUiStore = create<UiStoreState>()((set) => ({
   view: "recording",
   selectedMeetingId: null,
   pendingSegmentStartMs: null,
+  shortcutsOpen: false,
+  searchFocusPending: false,
 
   goRecording: () =>
     set({ view: "recording", selectedMeetingId: null, pendingSegmentStartMs: null }),
-  goHistory: () =>
-    set({ view: "history", selectedMeetingId: null, pendingSegmentStartMs: null }),
+  goHistory: () => set({ view: "history", selectedMeetingId: null, pendingSegmentStartMs: null }),
   openMeeting: (id, opts) =>
     set({
       view: "detail",
@@ -51,4 +72,8 @@ export const useUiStore = create<UiStoreState>()((set) => ({
       pendingSegmentStartMs: opts?.initialSegmentStartMs ?? null,
     }),
   consumePendingSegment: () => set({ pendingSegmentStartMs: null }),
+  setShortcutsOpen: (open) => set({ shortcutsOpen: open }),
+  requestSearchFocus: () =>
+    set({ view: "history", selectedMeetingId: null, searchFocusPending: true }),
+  consumeSearchFocus: () => set({ searchFocusPending: false }),
 }));

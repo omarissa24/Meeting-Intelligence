@@ -11,7 +11,9 @@ import {
 import { toast } from "sonner";
 import type {
   ActionItem,
-  MeetingSummary,
+  // Aliased to avoid colliding with the exported `MeetingSummary`
+  // component below (eslint no-redeclare).
+  MeetingSummary as MeetingSummaryData,
   PatchActionItemRequest,
   SummaryStatus,
   Topic,
@@ -36,7 +38,7 @@ import { cn } from "@/lib/utils";
 
 interface MeetingSummaryProps {
   meetingId: string;
-  summary: MeetingSummary | null;
+  summary: MeetingSummaryData | null;
   status: SummaryStatus;
   onRegenerate: () => void;
   isRegenerating: boolean;
@@ -79,9 +81,7 @@ export function MeetingSummary({
     return (
       <Card>
         <Header icon={<Sparkles className="size-4" aria-hidden />} title="Summary" />
-        <p className="px-5 pb-5 text-sm text-muted-foreground">
-          Recording too short to summarise.
-        </p>
+        <p className="px-5 pb-5 text-sm text-muted-foreground">Recording too short to summarise.</p>
       </Card>
     );
   }
@@ -141,9 +141,8 @@ export function MeetingSummary({
 
         {summary.confidenceLow ? (
           <p className="text-xs italic text-muted-foreground">
-            Speaker diarisation was uncertain on this recording — fewer than two
-            distinct speakers detected. Decisions and action items may be less
-            reliable.
+            Speaker diarisation was uncertain on this recording — fewer than two distinct speakers
+            detected. Decisions and action items may be less reliable.
           </p>
         ) : null}
 
@@ -235,13 +234,7 @@ function Header({
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h4 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
@@ -279,7 +272,7 @@ function ButtonRow({
   onRegenerateRequested,
   isRegenerating,
 }: {
-  summary: MeetingSummary;
+  summary: MeetingSummaryData;
   meetingId: string;
   onRegenerateRequested: () => void;
   isRegenerating: boolean;
@@ -406,9 +399,8 @@ function ConfirmRegenerateDialog({
         <DialogHeader>
           <DialogTitle>Regenerate this summary?</DialogTitle>
           <DialogDescription>
-            The current summary, decisions, action items, and topics will be
-            replaced with a fresh pass over the transcript. This can&apos;t be
-            undone.
+            The current summary, decisions, action items, and topics will be replaced with a fresh
+            pass over the transcript. This can&apos;t be undone.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -581,7 +573,7 @@ function formatTopicDuration(t: Topic): string {
   return `${m}m ${s.toString().padStart(2, "0")}s`;
 }
 
-export function renderSummaryMarkdown(summary: MeetingSummary): string {
+export function renderSummaryMarkdown(summary: MeetingSummaryData): string {
   const parts: string[] = [];
   if (summary.summary) {
     parts.push("# Summary", "", summary.summary, "");

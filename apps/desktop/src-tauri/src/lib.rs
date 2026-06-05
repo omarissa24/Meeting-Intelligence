@@ -476,6 +476,63 @@ async fn auth_logout() -> Result<String, AuthCommandError> {
     }
 }
 
+/// macOS only (US-28): install a custom application menu that mirrors the
+/// system default but DROPS the "Hide" item. The default menu binds ⌘H to
+/// Hide at the AppKit level, which swallows the key before the webview can
+/// see it — so the in-app ⌘H "open History" shortcut never fires. Omitting
+/// `PredefinedMenuItem::hide` reclaims ⌘H for the frontend handler. The
+/// standard Edit (undo/redo/cut/copy/paste/select-all) and Window items are
+/// preserved so text editing and window management keep working.
+#[cfg(target_os = "macos")]
+fn install_macos_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
+    use tauri::menu::{MenuBuilder, PredefinedMenuItem, SubmenuBuilder};
+
+    let handle = app.handle().clone();
+
+    let about = PredefinedMenuItem::about(&handle, None, None)?;
+    let services = PredefinedMenuItem::services(&handle, None)?;
+    let hide_others = PredefinedMenuItem::hide_others(&handle, None)?;
+    let show_all = PredefinedMenuItem::show_all(&handle, None)?;
+    let quit = PredefinedMenuItem::quit(&handle, None)?;
+
+    let app_menu = SubmenuBuilder::new(&handle, "Meeting Intelligence")
+        .item(&about)
+        .separator()
+        .item(&services)
+        .separator()
+        // PredefinedMenuItem::hide is deliberately omitted — it owns ⌘H.
+        .item(&hide_others)
+        .item(&show_all)
+        .separator()
+        .item(&quit)
+        .build()?;
+
+    let select_all = PredefinedMenuItem::select_all(&handle, None)?;
+    let edit_menu = SubmenuBuilder::new(&handle, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .item(&select_all)
+        .build()?;
+
+    let minimize = PredefinedMenuItem::minimize(&handle, None)?;
+    let close = PredefinedMenuItem::close_window(&handle, None)?;
+    let window_menu = SubmenuBuilder::new(&handle, "Window")
+        .item(&minimize)
+        .item(&close)
+        .build()?;
+
+    let menu = MenuBuilder::new(&handle)
+        .items(&[&app_menu, &edit_menu, &window_menu])
+        .build()?;
+
+    app.set_menu(menu)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -494,6 +551,13 @@ pub fn run() {
         .manage(OAuthState::default())
         .setup(|app| {
             let app_handle = app.handle().clone();
+            // macOS: swap in a custom app menu that frees ⌘H for the in-app
+            // "open History" shortcut (US-28). The default menu binds ⌘H to
+            // Hide at the AppKit level, swallowing it before the webview can
+            // see it. No-op on Windows/Linux (Ctrl+H isn't an OS shortcut
+            // there, so the webview already receives it).
+            #[cfg(target_os = "macos")]
+            install_macos_menu(app)?;
             // Drain any deep link the OS handed us at launch (cold-start
             // case where the user clicked a meeting-intelligence:// link
             // that opened the app).

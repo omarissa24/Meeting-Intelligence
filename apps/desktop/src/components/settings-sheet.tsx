@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { LogOut, Settings } from "lucide-react";
+import { Keyboard, LogOut, Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import {
   type ThemePreference,
   useSettingsStore,
 } from "@/stores/settings-store";
+import { useUiStore } from "@/stores/ui-store";
 
 const SYSTEM_DEFAULT_VALUE = "__system_default__";
 
@@ -62,6 +63,8 @@ export function SettingsSheet() {
   const setEnableSystemAudio = useSettingsStore((s) => s.setEnableSystemAudio);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setTheme = useSettingsStore((s) => s.setTheme);
+
+  const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
 
   const [open, setOpen] = useState(false);
   const [devices, setDevices] = useState<string[]>([]);
@@ -248,6 +251,26 @@ export function SettingsSheet() {
               </span>
             </div>
             <Switch aria-label="Use local STT" disabled />
+          </section>
+
+          <section className="flex flex-col gap-2">
+            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              Help
+            </h3>
+            <Button
+              type="button"
+              variant="outline"
+              className="justify-start gap-2"
+              onClick={() => {
+                // Close the sheet first so the panel isn't stacked behind
+                // it; the dialog lives at the AppShell level.
+                setOpen(false);
+                setShortcutsOpen(true);
+              }}
+            >
+              <Keyboard className="size-4" />
+              Keyboard shortcuts
+            </Button>
           </section>
 
           <section className="mt-auto flex flex-col gap-2 pt-4">

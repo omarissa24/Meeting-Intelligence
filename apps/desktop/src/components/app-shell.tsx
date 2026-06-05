@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { ConnectionStatus } from "@/components/connection-status";
 import { HistoryView } from "@/components/history-view";
+import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { MeetingDetailView } from "@/components/meeting-detail-view";
 import { PermissionPrompt } from "@/components/permission-prompt";
 import { ReconnectBanner } from "@/components/reconnect-banner";
@@ -12,7 +13,9 @@ import { SessionEndedView } from "@/components/session-ended-view";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
 import { Button } from "@/components/ui/button";
+import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useRecording } from "@/hooks/use-recording";
+import { canBrowseHistory } from "@/lib/recording-phase";
 import { useUiStore } from "@/stores/ui-store";
 
 export function AppShell() {
@@ -25,6 +28,12 @@ export function AppShell() {
 
   const [permPromptOpen, setPermPromptOpen] = useState(false);
 
+  // US-28: in-app keyboard shortcuts. Mounted here because AppShell is the
+  // single authenticated surface that already holds `start`/`stop` and the
+  // navigation store. start/stop are passed by identity; the hook ref's
+  // them so the listener installs once.
+  useKeyboardShortcuts({ start, stop });
+
   // Treat `stopping` and `stopped` as one rendering branch — the user
   // perceives "I clicked Stop" as instantaneous; the SessionEndedView
   // mounts on the same paint as the click. The Rust drain finishes in
@@ -34,9 +43,9 @@ export function AppShell() {
 
   // The History entry-point only makes sense when the recording surface
   // is idle — opening it mid-recording would yank the live transcript
-  // out from under the user. Idle/error/permission flows are fine.
-  const canBrowseHistory =
-    phase === "idle" || phase === "checking-permissions" || phase === "requesting-permissions";
+  // out from under the user. Shared with the ⌘/Ctrl+H shortcut so the two
+  // agree (see lib/recording-phase.ts).
+  const historyBrowsable = canBrowseHistory(phase);
 
   // Auto-open the explainer dialog whenever the user lands in
   // not-determined territory — either on first launch or after the
@@ -96,7 +105,7 @@ export function AppShell() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {canBrowseHistory && view === "recording" ? (
+          {historyBrowsable && view === "recording" ? (
             <Button
               type="button"
               variant="ghost"
@@ -155,6 +164,8 @@ export function AppShell() {
         }}
         pending={phase === "requesting-permissions"}
       />
+
+      <KeyboardShortcutsDialog />
     </div>
   );
 }

@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, History as HistoryIcon, Mic, Users } from "lucide-react";
 import type { Meeting, MeetingFilters } from "@meeting-intelligence/shared-types";
 
 import { HistoryFilters } from "@/components/history-filters";
-import { SearchInput } from "@/components/search-input";
+import { SearchInput, type SearchInputHandle } from "@/components/search-input";
 import { SearchResults } from "@/components/search-results";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -44,9 +44,22 @@ import { useUiStore } from "@/stores/ui-store";
 export function HistoryView() {
   const goRecording = useUiStore((s) => s.goRecording);
   const openMeeting = useUiStore((s) => s.openMeeting);
+  const searchFocusPending = useUiStore((s) => s.searchFocusPending);
+  const consumeSearchFocus = useUiStore((s) => s.consumeSearchFocus);
 
   const [filters, setFilters] = useState<MeetingFilters>({});
   const [query, setQuery] = useState("");
+  const searchRef = useRef<SearchInputHandle>(null);
+
+  // US-28 ⌘/Ctrl+F: the shortcut handler stages a focus request in the
+  // ui-store; consume it here so a normal History open doesn't steal
+  // focus. Runs after mount, so a request that also navigated here from
+  // another view lands on the freshly-mounted input.
+  useEffect(() => {
+    if (!searchFocusPending) return;
+    searchRef.current?.focus();
+    consumeSearchFocus();
+  }, [searchFocusPending, consumeSearchFocus]);
 
   const listQuery = useMeetingsList(filters);
   const searchQuery = useSearch(query, filters);
@@ -81,14 +94,10 @@ export function HistoryView() {
       </header>
 
       <div className="flex flex-col gap-2 px-6 pt-3">
-        <SearchInput value={query} onSubmit={setQuery} />
+        <SearchInput ref={searchRef} value={query} onSubmit={setQuery} />
       </div>
 
-      <HistoryFilters
-        filters={filters}
-        onChange={setFilters}
-        meetings={meetings}
-      />
+      <HistoryFilters filters={filters} onChange={setFilters} meetings={meetings} />
 
       <CardContent className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
         {isSearching ? (

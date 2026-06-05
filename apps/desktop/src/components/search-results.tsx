@@ -94,19 +94,13 @@ function SearchHitRow({
         </span>
       </div>
       <div className="flex items-start gap-3">
-        <Badge
-          variant="outline"
-          className="mt-0.5 shrink-0 font-normal tabular-nums"
-        >
+        <Badge variant="outline" className="mt-0.5 shrink-0 font-normal tabular-nums">
           {timestamp}
         </Badge>
         <p className="text-sm text-muted-foreground line-clamp-3">
           {segments.map((seg, i) =>
             seg.match ? (
-              <mark
-                key={i}
-                className="bg-transparent text-foreground font-medium"
-              >
+              <mark key={i} className="bg-transparent text-foreground font-medium">
                 {seg.text}
               </mark>
             ) : (
@@ -141,11 +135,9 @@ function NoResults({ query }: { query: string }) {
           <SearchX />
         </EmptyMedia>
         <EmptyTitle className="font-display text-xl font-normal">
-          No results for "{query}"
+          No results for &ldquo;{query}&rdquo;
         </EmptyTitle>
-        <EmptyDescription>
-          Try a different phrase, or clear the filters above.
-        </EmptyDescription>
+        <EmptyDescription>Try a different phrase, or clear the filters above.</EmptyDescription>
       </EmptyHeader>
     </Empty>
   );
@@ -155,9 +147,7 @@ function ErrorView({ onRetry }: { onRetry?: () => void }) {
   return (
     <Empty className="m-6 flex-1 border">
       <EmptyHeader>
-        <EmptyTitle className="font-display text-xl font-normal">
-          Search failed
-        </EmptyTitle>
+        <EmptyTitle className="font-display text-xl font-normal">Search failed</EmptyTitle>
         <EmptyDescription>
           The backend didn&apos;t respond. Check your connection and try again.
         </EmptyDescription>
@@ -183,10 +173,7 @@ interface HighlightSegment {
  * don't contain the literal query render plain (the timestamp +
  * card layout already implies the match was relevant).
  */
-export function highlightMatches(
-  text: string,
-  query: string,
-): HighlightSegment[] {
+export function highlightMatches(text: string, query: string): HighlightSegment[] {
   const trimmed = query.trim();
   if (!trimmed) return [{ text, match: false }];
   const haystack = text.toLowerCase();
