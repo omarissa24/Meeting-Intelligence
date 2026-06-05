@@ -46,9 +46,7 @@ export function KeyboardShortcutsDialog() {
             if (items.length === 0) return null;
             return (
               <section key={group} className="flex flex-col gap-2">
-                <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                  {group}
-                </h3>
+                <h3 className="text-eyebrow">{group}</h3>
                 <ul className="flex flex-col gap-1.5">
                   {items.map((def) => (
                     <li

@@ -29,18 +29,19 @@ export function LoginView() {
   }, [errorMessage]);
 
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-background px-8 text-foreground">
-      <div className="flex w-full max-w-sm flex-col items-stretch gap-8 text-center">
+    <div className="flex h-screen flex-col items-center justify-center bg-background app-atmosphere px-8 text-foreground">
+      <div className="flex w-full max-w-sm animate-rise-in flex-col items-stretch gap-8 text-center">
         <div className="flex flex-col gap-3">
-          <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          <span className="inline-flex items-center justify-center gap-2 text-eyebrow">
+            <span aria-hidden className="size-1.5 rounded-full bg-accent" />
             Meeting Intelligence
           </span>
           <h1 className="font-display text-4xl font-normal leading-tight tracking-tight">
             Sign in to continue
           </h1>
           <p className="text-sm text-muted-foreground">
-            We&rsquo;ll open your browser to authenticate. Once signed in,
-            you&rsquo;ll come right back here.
+            We&rsquo;ll open your browser to authenticate. Once signed in, you&rsquo;ll come right
+            back here.
           </p>
         </div>
 
@@ -65,8 +66,8 @@ export function LoginView() {
 
         {pending ? (
           <p className="text-xs text-muted-foreground">
-            Complete the sign-in in your browser. This window will pick
-            up the session as soon as the redirect lands.
+            Complete the sign-in in your browser. This window will pick up the session as soon as
+            the redirect lands.
           </p>
         ) : null}
       </div>

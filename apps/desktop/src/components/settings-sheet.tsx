@@ -117,17 +117,13 @@ export function SettingsSheet() {
         <div className="flex flex-col gap-6 px-4 pb-6">
           {email ? (
             <section className="flex flex-col gap-2">
-              <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                Signed in as
-              </h3>
+              <h3 className="text-eyebrow">Signed in as</h3>
               <p className="text-sm text-foreground break-all">{email}</p>
             </section>
           ) : null}
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Backend
-            </h3>
+            <h3 className="text-eyebrow">Backend</h3>
             <div className="rounded-md border border-border bg-card px-3 py-2">
               <p className="font-mono text-xs text-foreground break-all">{BACKEND_HTTP_URL}</p>
             </div>
@@ -137,9 +133,7 @@ export function SettingsSheet() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Microphone
-            </h3>
+            <h3 className="text-eyebrow">Microphone</h3>
             <Select
               value={micDeviceLabel ?? SYSTEM_DEFAULT_VALUE}
               onValueChange={(value) => {
@@ -192,9 +186,7 @@ export function SettingsSheet() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Transcription language
-            </h3>
+            <h3 className="text-eyebrow">Transcription language</h3>
             <Select
               value={language}
               onValueChange={(value) => {
@@ -218,9 +210,7 @@ export function SettingsSheet() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Appearance
-            </h3>
+            <h3 className="text-eyebrow">Appearance</h3>
             <Select
               value={theme}
               onValueChange={(value) => {
@@ -254,9 +244,7 @@ export function SettingsSheet() {
           </section>
 
           <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Help
-            </h3>
+            <h3 className="text-eyebrow">Help</h3>
             <Button
               type="button"
               variant="outline"

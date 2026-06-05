@@ -64,8 +64,10 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (meeting-detail-view tests; 220 total; typecheck + lint)
 
 ## Wave 7 — Auth, settings, dialogs
-- [ ] `login-view.tsx` (first impression), `settings-sheet.tsx` (FieldGroup/Field), `keyboard-shortcuts-dialog.tsx`
-- [ ] Gate green
+- [x] `login-view.tsx`: amber brand-dot wordmark, `.app-atmosphere` halo, gentle rise-in entrance
+- [x] `settings-sheet.tsx`: all section headers unified to `.text-eyebrow` (kept the Select/Switch structure — a FieldGroup refactor was deferred as non-essential churn; the panel already reads clean and the sheet gained depth in Wave 1)
+- [x] `keyboard-shortcuts-dialog.tsx`: group headers on `.text-eyebrow`
+- [x] Gate green (220 tests incl. keyboard-shortcuts-dialog; typecheck + lint)
 
 ## Wave 8 — Cross-cutting QA
 - [ ] `prefers-reduced-motion` honoured on every animated surface
