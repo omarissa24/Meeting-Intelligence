@@ -81,8 +81,8 @@ function SearchHitRow({
       type="button"
       onClick={onOpen}
       className={cn(
-        "group flex w-full flex-col gap-2 border-b px-6 py-4 text-left transition-colors",
-        "hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none",
+        "group flex w-full flex-col gap-2 border-b px-6 py-4 text-left transition-base",
+        "hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
       )}
     >
       <div className="flex items-baseline justify-between gap-3">
@@ -100,7 +100,10 @@ function SearchHitRow({
         <p className="text-sm text-muted-foreground line-clamp-3">
           {segments.map((seg, i) =>
             seg.match ? (
-              <mark key={i} className="bg-transparent text-foreground font-medium">
+              <mark
+                key={i}
+                className="rounded-[3px] bg-surface-selected px-0.5 font-medium text-foreground"
+              >
                 {seg.text}
               </mark>
             ) : (
@@ -134,9 +137,7 @@ function NoResults({ query }: { query: string }) {
         <EmptyMedia variant="icon">
           <SearchX />
         </EmptyMedia>
-        <EmptyTitle className="font-display text-xl font-normal">
-          No results for &ldquo;{query}&rdquo;
-        </EmptyTitle>
+        <EmptyTitle className="text-title">No results for &ldquo;{query}&rdquo;</EmptyTitle>
         <EmptyDescription>Try a different phrase, or clear the filters above.</EmptyDescription>
       </EmptyHeader>
     </Empty>
@@ -147,7 +148,7 @@ function ErrorView({ onRetry }: { onRetry?: () => void }) {
   return (
     <Empty className="m-6 flex-1 border">
       <EmptyHeader>
-        <EmptyTitle className="font-display text-xl font-normal">Search failed</EmptyTitle>
+        <EmptyTitle className="text-title">Search failed</EmptyTitle>
         <EmptyDescription>
           The backend didn&apos;t respond. Check your connection and try again.
         </EmptyDescription>

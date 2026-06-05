@@ -1,19 +1,12 @@
 import { useMemo, useState } from "react";
 import { Filter, X } from "lucide-react";
-import type {
-  Meeting,
-  MeetingFilters,
-} from "@meeting-intelligence/shared-types";
+import type { Meeting, MeetingFilters } from "@meeting-intelligence/shared-types";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,27 +41,17 @@ export function HistoryFilters({ filters, onChange, meetings }: HistoryFiltersPr
     <div className="flex items-center gap-2 px-6 py-3 border-b">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant={isActive ? "default" : "outline"}
-            size="sm"
-          >
+          <Button type="button" variant={isActive ? "default" : "outline"} size="sm">
             <Filter className="size-3.5" aria-hidden />
             Filters
             {isActive ? (
-              <Badge
-                variant="secondary"
-                className="ml-1 h-5 px-1.5 text-[10px] font-normal"
-              >
+              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] font-normal">
                 {summary.length}
               </Badge>
             ) : null}
           </Button>
         </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          className="w-80 gap-4 p-4"
-        >
+        <PopoverContent align="start" className="w-80 gap-4 p-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="filter-date-start" className="text-xs">
@@ -78,9 +61,7 @@ export function HistoryFilters({ filters, onChange, meetings }: HistoryFiltersPr
                 id="filter-date-start"
                 type="date"
                 value={filters.dateStart ?? ""}
-                onChange={(e) =>
-                  onChange({ ...filters, dateStart: e.target.value || null })
-                }
+                onChange={(e) => onChange({ ...filters, dateStart: e.target.value || null })}
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -91,9 +72,7 @@ export function HistoryFilters({ filters, onChange, meetings }: HistoryFiltersPr
                 id="filter-date-end"
                 type="date"
                 value={filters.dateEnd ?? ""}
-                onChange={(e) =>
-                  onChange({ ...filters, dateEnd: e.target.value || null })
-                }
+                onChange={(e) => onChange({ ...filters, dateEnd: e.target.value || null })}
               />
             </div>
           </div>
@@ -157,8 +136,8 @@ export function HistoryFilters({ filters, onChange, meetings }: HistoryFiltersPr
                       type="button"
                       onClick={() => onChange(toggleTag(filters, tag))}
                       className={cn(
-                        "transition-shadow",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md",
+                        "rounded-md transition-base",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                       )}
                       aria-pressed={selected}
                     >
@@ -199,7 +178,7 @@ export function HistoryFilters({ filters, onChange, meetings }: HistoryFiltersPr
               key={chip.key}
               type="button"
               onClick={() => onChange(chip.clear(filters))}
-              className="group inline-flex items-center gap-1 rounded-md bg-muted/40 hover:bg-muted px-2 py-0.5 text-xs"
+              className="group inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5 text-xs transition-fast hover:bg-muted"
               aria-label={`Remove ${chip.label} filter`}
             >
               <span>{chip.label}</span>
@@ -230,18 +209,11 @@ function describeFilters(filters: MeetingFilters): FilterChip[] {
       clear: (f) => ({ ...f, dateStart: null, dateEnd: null }),
     });
   }
-  if (
-    filters.durationMinSeconds != null ||
-    filters.durationMaxSeconds != null
-  ) {
+  if (filters.durationMinSeconds != null || filters.durationMaxSeconds != null) {
     const min =
-      filters.durationMinSeconds != null
-        ? `${Math.round(filters.durationMinSeconds / 60)}m`
-        : "0m";
+      filters.durationMinSeconds != null ? `${Math.round(filters.durationMinSeconds / 60)}m` : "0m";
     const max =
-      filters.durationMaxSeconds != null
-        ? `${Math.round(filters.durationMaxSeconds / 60)}m`
-        : "∞";
+      filters.durationMaxSeconds != null ? `${Math.round(filters.durationMaxSeconds / 60)}m` : "∞";
     chips.push({
       key: "duration",
       label: `${min} – ${max}`,
@@ -285,9 +257,7 @@ function collectTags(meetings: Meeting[]): string[] {
 
 function toggleTag(filters: MeetingFilters, tag: string): MeetingFilters {
   const current = filters.tags ?? [];
-  const next = current.includes(tag)
-    ? current.filter((t) => t !== tag)
-    : [...current, tag];
+  const next = current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag];
   return { ...filters, tags: next.length > 0 ? next : undefined };
 }
 

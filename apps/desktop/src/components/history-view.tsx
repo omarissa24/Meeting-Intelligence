@@ -84,10 +84,10 @@ export function HistoryView() {
           >
             <ArrowLeft />
           </Button>
-          <h2 className="font-display text-xl font-normal tracking-tight">Meetings</h2>
+          <h2 className="text-title">Meetings</h2>
         </div>
         {!isSearching && meetings.length > 0 ? (
-          <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+          <span className="text-eyebrow">
             {meetings.length} {meetings.length === 1 ? "meeting" : "meetings"}
           </span>
         ) : null}
@@ -160,8 +160,8 @@ function MeetingRow({ meeting, onOpen }: { meeting: Meeting; onOpen: () => void 
       type="button"
       onClick={onOpen}
       className={cn(
-        "group flex w-full items-start gap-4 border-b px-6 py-4 text-left transition-colors",
-        "hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none",
+        "group flex w-full items-start gap-4 border-b px-6 py-4 text-left transition-base",
+        "hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
       )}
     >
       <div className="flex flex-1 flex-col gap-1.5 min-w-0">
@@ -224,7 +224,7 @@ function EmptyState() {
         <EmptyMedia variant="icon">
           <HistoryIcon />
         </EmptyMedia>
-        <EmptyTitle className="font-display text-xl font-normal">No meetings yet</EmptyTitle>
+        <EmptyTitle className="text-title">No meetings yet</EmptyTitle>
         <EmptyDescription>
           Your recorded meetings will appear here once you finish a session.
         </EmptyDescription>
@@ -241,9 +241,7 @@ function ErrorView({ onRetry }: { onRetry: () => void }) {
   return (
     <Empty className="m-6 flex-1 border">
       <EmptyHeader>
-        <EmptyTitle className="font-display text-xl font-normal">
-          Couldn&apos;t load meetings
-        </EmptyTitle>
+        <EmptyTitle className="text-title">Couldn&apos;t load meetings</EmptyTitle>
         <EmptyDescription>
           The backend didn&apos;t respond. Check your connection and try again.
         </EmptyDescription>

@@ -107,7 +107,7 @@ export const SearchInput = forwardRef<SearchInputHandle, SearchInputProps>(funct
         <button
           type="button"
           onClick={() => setDraft("")}
-          className="absolute right-2 inline-flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+          className="absolute right-2 inline-flex size-5 items-center justify-center rounded text-muted-foreground transition-fast hover:text-foreground"
           aria-label="Clear search"
         >
           <X className="size-3.5" aria-hidden />

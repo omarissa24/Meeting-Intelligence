@@ -51,8 +51,11 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (meeting-summary tests 9/9; 220 total; typecheck + lint clean)
 
 ## Wave 5 — History + search
-- [ ] `history-view.tsx` (rows, hover lift, distinct empty/filtered/error states, stagger-in), `search-input.tsx`, `search-results.tsx`, `history-filters.tsx`
-- [ ] Gate green
+- [x] `history-view.tsx`: `.text-title` heading + `.text-eyebrow` count, rows now hover on `bg-surface-hover` with settle transition, empty/error titles on the ramp
+- [x] `search-results.tsx`: surface-hover rows + **amber `bg-surface-selected` highlight on matched text**, ramp empty/error titles
+- [x] `history-filters.tsx` + `search-input.tsx`: settle transitions on tag toggles, summary chips, clear button
+- [x] Row entrance left to the card-level rise-in (Wave 2) — calmer than per-row stagger, on-ethos
+- [x] Gate green (220 tests incl. history-view/search-input/search-results; typecheck + lint)
 
 ## Wave 6 — Detail surface
 - [ ] `meeting-detail-view.tsx` (edit affordances, remove `-mx-3` hack), `meeting-audio-player.tsx`, `participants-section.tsx` (Avatar via shadcn CLI)
