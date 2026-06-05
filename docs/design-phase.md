@@ -1,0 +1,59 @@
+# Design & Polish Phase (Phase 4.5) — Progress
+
+A cross-cutting UI/UX polish phase inserted before Phase 5. Goal: elevate execution of the
+**existing** design identity ("editorial-calm instrument") to an industry-standard premium bar,
+by turning the implicit design system into an explicit, documented contract (see
+[`design-system.md`](./design-system.md)) and sweeping every surface to consume it.
+
+> This phase is a scope addition not present in the original phases doc. It is tracked here
+> rather than in `TODO.md` (which mirrors the phases docx). Locked direction: **elevate existing
+> identity**, **editorial-calm-premium** bar, **CSS + tokens** motion (no new deps).
+
+Each wave ends at a green gate: `typecheck` clean · `vitest` 220 green · `lint` exit 0 · manual
+visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in the wave's commit.
+
+## Wave 0 — Design contract (`globals.css` + docs)
+- [x] Interaction-tint tokens (`--surface-hover/pressed/selected`) + `@theme inline` exposure
+- [x] Elevation tokens + `.elevation-card` / `.elevation-overlay`
+- [x] Wire motion tokens: `.transition-base` / `.transition-fast`, `.animate-rise-in`, `.stagger-item`
+- [x] `prefers-reduced-motion: reduce` global guard
+- [x] Type ramp utilities (`.text-display/title/numeral/body/eyebrow/caption`)
+- [x] `--recording-hover` baked (kills the `color-mix` hack); light-mode scrim raised to 0.3
+- [x] `docs/design-system.md` contract + this checklist
+- [x] Gate: `pnpm build` compiles Tailwind clean
+
+## Wave 1 — Primitive refinement (`components/ui/*`)
+- [ ] Card, Button, Badge, Input, Empty, Skeleton, Dialog/Sheet/Popover surfaces, ScrollArea, Select, Switch, Kbd consume Wave-0 tokens (elevation, transition-base, interaction tints, focus ring)
+- [ ] Gate green
+
+## Wave 2 — App chrome & atmosphere
+- [ ] `app-shell.tsx` header/footer rhythm, replace "Foundation" placeholder, nav affordances
+- [ ] View-transition choreography between recording/history/detail (progressive enhancement)
+- [ ] Restrained background atmosphere (barely-perceptible warmth/grain)
+- [ ] Gate green
+
+## Wave 3 — Recording surface
+- [ ] `record-control.tsx` hero (concentric rings + breathing live glow), `transcript-panel.tsx`, `mic-level-meter.tsx`, `reconnect-banner.tsx`, `connection-status.tsx`, `permission-prompt.tsx`
+- [ ] Gate green
+
+## Wave 4 — Session-ended + summary
+- [ ] `session-ended-view.tsx` (editorial stat numerals, transcript review), `meeting-summary.tsx` (hierarchy + content-shaped skeleton)
+- [ ] Gate green
+
+## Wave 5 — History + search
+- [ ] `history-view.tsx` (rows, hover lift, distinct empty/filtered/error states, stagger-in), `search-input.tsx`, `search-results.tsx`, `history-filters.tsx`
+- [ ] Gate green
+
+## Wave 6 — Detail surface
+- [ ] `meeting-detail-view.tsx` (edit affordances, remove `-mx-3` hack), `meeting-audio-player.tsx`, `participants-section.tsx` (Avatar via shadcn CLI)
+- [ ] Gate green
+
+## Wave 7 — Auth, settings, dialogs
+- [ ] `login-view.tsx` (first impression), `settings-sheet.tsx` (FieldGroup/Field), `keyboard-shortcuts-dialog.tsx`
+- [ ] Gate green
+
+## Wave 8 — Cross-cutting QA
+- [ ] `prefers-reduced-motion` honoured on every animated surface
+- [ ] focus-visible coverage + `aria-label`s on all icon buttons
+- [ ] dark-mode parity sweep (incl. raised scrim)
+- [ ] final consistency pass against the contract in both themes

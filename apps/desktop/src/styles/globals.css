@@ -57,6 +57,7 @@
   /* Single non-shadcn token: the live-recording indicator.
    * Distinct from --destructive (which is reserved for error states). */
   --recording: oklch(0.62 0.2 25);
+  --recording-hover: oklch(0.58 0.2 25);
   --recording-glow: oklch(0.62 0.2 25 / 0.35);
 
   /* Mic-level meter bands (US-25a) — green/amber/red traffic light for
@@ -67,10 +68,23 @@
   --meter-warn: oklch(0.78 0.14 75);
   --meter-bad: oklch(0.55 0.2 27);
 
-  /* Modal scrim (US-27). A subtle dark wash in light mode; the .dark
-   * override goes stronger so the overlay reads on a dark background
-   * (raw black/10 was imperceptible there). */
-  --overlay: oklch(0.15 0.02 260 / 0.18);
+  /* Modal scrim. A dark wash in light mode — raised from 0.18, which was
+   * nearly imperceptible on warm paper; the .dark override goes stronger
+   * still so the overlay reads on a dark background. */
+  --overlay: oklch(0.15 0.02 260 / 0.3);
+
+  /* Interaction tints (Phase 4.5 contract). Surface-agnostic washes for
+   * hover / pressed / selected so every interactive row, chip, and button
+   * speaks one vocabulary. Ink-on-paper in light, white-on-ink in dark. */
+  --surface-hover: oklch(0.22 0.015 260 / 0.045);
+  --surface-pressed: oklch(0.22 0.015 260 / 0.08);
+  --surface-selected: oklch(0.78 0.14 75 / 0.12);
+
+  /* Elevation. Soft, low-spread shadows — depth without drama, per the
+   * "editorial calm" brief. Card for resting surfaces; overlay for
+   * dialogs / popovers / sheets. */
+  --shadow-card: 0 1px 2px oklch(0.22 0.015 260 / 0.04), 0 4px 12px oklch(0.22 0.015 260 / 0.05);
+  --shadow-overlay: 0 8px 30px oklch(0.2 0.015 260 / 0.14), 0 2px 8px oklch(0.2 0.015 260 / 0.08);
 
   --radius: 0.625rem;
 
@@ -121,6 +135,7 @@
   --sidebar-ring: oklch(0.82 0.13 75);
 
   --recording: oklch(0.66 0.2 25);
+  --recording-hover: oklch(0.72 0.2 25);
   --recording-glow: oklch(0.66 0.2 25 / 0.35);
 
   --meter-good: oklch(0.7 0.12 150);
@@ -128,6 +143,13 @@
   --meter-bad: oklch(0.6 0.2 25);
 
   --overlay: oklch(0 0 0 / 0.55);
+
+  --surface-hover: oklch(1 0 0 / 0.06);
+  --surface-pressed: oklch(1 0 0 / 0.1);
+  --surface-selected: oklch(0.82 0.13 75 / 0.16);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.3), 0 6px 16px oklch(0 0 0 / 0.25);
+  --shadow-overlay: 0 12px 40px oklch(0 0 0 / 0.5), 0 4px 12px oklch(0 0 0 / 0.4);
 }
 
 @theme inline {
@@ -167,6 +189,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   --color-recording: var(--recording);
+  --color-recording-hover: var(--recording-hover);
   --color-recording-glow: var(--recording-glow);
 
   --color-meter-good: var(--meter-good);
@@ -174,6 +197,10 @@
   --color-meter-bad: var(--meter-bad);
 
   --color-overlay: var(--overlay);
+
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-pressed: var(--surface-pressed);
+  --color-surface-selected: var(--surface-selected);
 
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
@@ -235,5 +262,95 @@
 
   .tabular-nums {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Wire the motion tokens (Phase 4.5) — previously defined but never
+   * consumed, so every transition fell back to Tailwind's flat 150ms. */
+  .transition-base {
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-duration: var(--motion-base);
+    transition-timing-function: var(--motion-easing);
+  }
+  .transition-fast {
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--motion-easing);
+  }
+
+  /* Soft elevation utilities — pair a surface with depth without drama. */
+  .elevation-card {
+    box-shadow: var(--shadow-card);
+  }
+  .elevation-overlay {
+    box-shadow: var(--shadow-overlay);
+  }
+
+  /* "Panels rise into place." Heavier sibling of animate-line-in, for
+   * cards / sections rather than individual transcript lines. */
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-rise-in {
+    animation: rise-in var(--motion-base) var(--motion-easing) both;
+  }
+
+  /* Staggered list entrances. Pair with .animate-line-in / .animate-rise-in
+   * and set --stagger-index inline. Cap the index (~10) at the call site so
+   * long lists don't accrue a visible delay. */
+  .stagger-item {
+    animation-delay: calc(var(--stagger-index, 0) * 35ms);
+  }
+}
+
+@layer components {
+  /* Typography ramp (Phase 4.5). The implicit heading sizes are now a
+   * documented scale, so surfaces consume `.text-title` etc. instead of
+   * re-deriving bespoke size/leading/tracking combos. Instrument Serif
+   * carries display + titles; IBM Plex Sans carries body + labels. */
+  .text-eyebrow {
+    @apply text-xs font-medium uppercase text-muted-foreground;
+    letter-spacing: 0.14em;
+  }
+  .text-display {
+    @apply font-display text-3xl font-normal tracking-tight;
+    line-height: 1.05;
+  }
+  .text-title {
+    @apply font-display text-xl font-normal leading-snug tracking-tight;
+  }
+  .text-numeral {
+    @apply font-display tracking-tight;
+    font-variant-numeric: tabular-nums;
+  }
+  .text-body {
+    @apply text-sm leading-relaxed;
+  }
+  .text-caption {
+    @apply text-xs text-muted-foreground;
+  }
+}
+
+/* Accessibility: honour the OS "Reduce Motion" setting everywhere. The
+ * editorial-calm brief already favours restraint; this makes it a
+ * guarantee. Kept outside @layer so it always wins the cascade. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
