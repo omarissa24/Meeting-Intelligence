@@ -12,7 +12,7 @@ import { useAuthStore } from "@/stores/auth-store";
  * surfaced from the round-trip.
  *
  * Aesthetic stays in the design-system pocket: warm-paper canvas,
- * Instrument Serif heading, IBM Plex body. No raw colors — `bg-card`,
+ * Geist throughout. No raw colors — `bg-card`,
  * `text-muted-foreground`, etc. so a future dark-mode flip works
  * without per-screen overrides.
  */
