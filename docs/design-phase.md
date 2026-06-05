@@ -46,8 +46,9 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (build, 220 tests, lint)
 
 ## Wave 4 — Session-ended + summary
-- [ ] `session-ended-view.tsx` (editorial stat numerals, transcript review), `meeting-summary.tsx` (hierarchy + content-shaped skeleton)
-- [ ] Gate green
+- [x] `session-ended-view.tsx`: flat editorial stat tiles (`.text-eyebrow` + `.text-numeral`), `.text-title` heading, cleaner transcript-review (muted→foreground hover, no ad-hoc `/80`)
+- [x] `meeting-summary.tsx`: `.text-title` card header + `.text-eyebrow` section labels, removed every ad-hoc `text-foreground/90`, `.elevation-card` surface, nested action-item tiles on `bg-muted/30`
+- [x] Gate green (meeting-summary tests 9/9; 220 total; typecheck + lint clean)
 
 ## Wave 5 — History + search
 - [ ] `history-view.tsx` (rows, hover lift, distinct empty/filtered/error states, stagger-in), `search-input.tsx`, `search-results.tsx`, `history-filters.tsx`

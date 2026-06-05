@@ -134,7 +134,7 @@ export function MeetingSummary({
       />
       <div className="flex flex-col gap-5 px-5 pb-5">
         {summary.summary ? (
-          <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap">
+          <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">
             {summary.summary}
           </p>
         ) : null}
@@ -150,7 +150,7 @@ export function MeetingSummary({
           {summary.decisions.length === 0 ? (
             <EmptyLine>No decisions recorded.</EmptyLine>
           ) : (
-            <ol className="ml-5 list-decimal text-sm text-foreground/90 [&>li]:py-0.5">
+            <ol className="ml-5 list-decimal text-sm text-foreground [&>li]:py-0.5">
               {summary.decisions.map((d, idx) => (
                 <li key={idx}>{d}</li>
               ))}
@@ -178,7 +178,7 @@ export function MeetingSummary({
           {summary.topics.length === 0 ? (
             <EmptyLine>No topics recorded.</EmptyLine>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm text-foreground/90">
+            <ul className="flex flex-col gap-1 text-sm text-foreground">
               {summary.topics.map((t, idx) => (
                 <li key={idx} className="flex items-baseline gap-2">
                   <span>{t.name}</span>
@@ -208,7 +208,7 @@ export function MeetingSummary({
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <section className="rounded-xl border bg-card text-card-foreground shadow-xs">
+    <section className="rounded-xl border bg-card text-card-foreground elevation-card">
       {children}
     </section>
   );
@@ -227,7 +227,7 @@ function Header({
     <header className="flex items-center justify-between gap-3 border-b px-5 py-3">
       <div className="flex items-center gap-2">
         {icon}
-        <h3 className="font-display text-base font-normal tracking-tight">{title}</h3>
+        <h3 className="text-title">{title}</h3>
       </div>
       {right}
     </header>
@@ -237,9 +237,7 @@ function Header({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
-      <h4 className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-        {title}
-      </h4>
+      <h4 className="text-eyebrow">{title}</h4>
       {children}
     </div>
   );
@@ -470,7 +468,7 @@ function ActionItemRow({
     <li
       key={itemKey}
       className={cn(
-        "flex items-start gap-3 rounded-lg border bg-card/40 px-3 py-2.5",
+        "flex items-start gap-3 rounded-lg border bg-muted/30 px-3 py-2.5 transition-fast",
         item.completed && "opacity-70",
       )}
     >
@@ -534,7 +532,7 @@ function ActionItemRow({
             <div className="flex items-start justify-between gap-2">
               <p
                 className={cn(
-                  "text-sm text-foreground/90",
+                  "text-sm text-foreground",
                   item.completed && "line-through text-muted-foreground",
                 )}
               >

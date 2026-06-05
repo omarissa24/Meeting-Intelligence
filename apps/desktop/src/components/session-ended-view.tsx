@@ -104,9 +104,7 @@ export function SessionEndedView() {
   return (
     <Card className="flex h-full flex-col overflow-hidden">
       <CardHeader className="border-b">
-        <CardTitle className="font-display text-xl font-normal tracking-tight">
-          Session ended
-        </CardTitle>
+        <CardTitle className="text-title">Session ended</CardTitle>
         <CardDescription>{formatTimeRange(startedAt, endedAt)}</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto p-6">
@@ -121,9 +119,7 @@ export function SessionEndedView() {
               status={detailQuery.data?.summaryStatus ?? "pending"}
               onRegenerate={() => summarise.mutate()}
               isRegenerating={summarise.isPending}
-              onPatchActionItem={(itemId, body) =>
-                patchActionItem.mutate({ itemId, body })
-              }
+              onPatchActionItem={(itemId, body) => patchActionItem.mutate({ itemId, body })}
             />
           </div>
         ) : null}
@@ -152,14 +148,10 @@ function StatGrid({ stats }: { stats: { duration: string; words: number; speaker
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card size="sm" className="bg-card/60">
-      <CardContent className="flex flex-col gap-1 py-1">
-        <span className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</span>
-        <span className="font-display text-2xl font-normal leading-none tabular-nums tracking-tight">
-          {value}
-        </span>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col gap-1.5 rounded-lg bg-muted/40 px-4 py-3">
+      <span className="text-eyebrow">{label}</span>
+      <span className="text-numeral text-2xl leading-none">{value}</span>
+    </div>
   );
 }
 
@@ -204,7 +196,7 @@ function TranscriptReview({
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
       className="rounded-xl ring-1 ring-foreground/10"
     >
-      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-foreground/80 hover:text-foreground">
+      <summary className="cursor-pointer select-none px-4 py-3 text-sm font-medium text-muted-foreground transition-fast hover:text-foreground">
         Review transcript ({lines.length} {lines.length === 1 ? "line" : "lines"})
       </summary>
       <ScrollArea className="max-h-72 border-t">
@@ -213,7 +205,7 @@ function TranscriptReview({
             if (line.speakerId === SYSTEM_SPEAKER_ID) {
               return (
                 <li key={`${line.sessionId}-${idx}`} className="text-center">
-                  <p className="text-xs italic text-muted-foreground/80">— {line.text} —</p>
+                  <p className="text-xs italic text-muted-foreground">— {line.text} —</p>
                 </li>
               );
             }
