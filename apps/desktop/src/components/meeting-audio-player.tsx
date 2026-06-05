@@ -50,13 +50,8 @@ export function MeetingAudioPlayer({ meeting, state }: MeetingAudioPlayerProps) 
   }
 
   return (
-    <section
-      aria-label="Meeting audio"
-      className="flex flex-col gap-2 border-b px-6 py-4"
-    >
-      <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        Audio
-      </div>
+    <section aria-label="Meeting audio" className="flex flex-col gap-2 border-b px-6 py-4">
+      <div className="text-eyebrow">Audio</div>
       <Body meeting={meeting} state={state} />
     </section>
   );
@@ -71,11 +66,7 @@ function Body({ meeting, state }: MeetingAudioPlayerProps) {
     case "deleted":
       return <StatusLine>Audio deleted.</StatusLine>;
     case "failed-encode":
-      return (
-        <StatusLine>
-          Audio archive failed. Try recording the meeting again.
-        </StatusLine>
-      );
+      return <StatusLine>Audio archive failed. Try recording the meeting again.</StatusLine>;
     case "no-archive":
       // Cold-start with no key. Could be a previous-session delete,
       // a previous-session encode failure, or audio that was never
@@ -115,12 +106,7 @@ function ReadyState({ meeting }: { meeting: MeetingDetail }) {
     return (
       <div className="flex items-center justify-between gap-3">
         <StatusLine>Couldn&apos;t load the audio URL. Try again later.</StatusLine>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => void audio.refetch()}
-        >
+        <Button type="button" variant="outline" size="sm" onClick={() => void audio.refetch()}>
           Retry
         </Button>
       </div>
@@ -129,12 +115,7 @@ function ReadyState({ meeting }: { meeting: MeetingDetail }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <audio
-        controls
-        preload="metadata"
-        src={audio.data.audioUrl}
-        className="h-10 w-full"
-      >
+      <audio controls preload="metadata" src={audio.data.audioUrl} className="h-10 w-full">
         <track kind="captions" />
       </audio>
       <div className="flex justify-end">
@@ -178,8 +159,8 @@ function DeleteAudioButton({ meetingId }: { meetingId: string }) {
         <DialogHeader>
           <DialogTitle>Delete audio archive?</DialogTitle>
           <DialogDescription>
-            The transcript stays. The MP3 is removed permanently and can&apos;t
-            be re-generated for this meeting.
+            The transcript stays. The MP3 is removed permanently and can&apos;t be re-generated for
+            this meeting.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -188,12 +169,7 @@ function DeleteAudioButton({ meetingId }: { meetingId: string }) {
               Cancel
             </Button>
           </DialogClose>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={onConfirm}
-            disabled={del.isPending}
-          >
+          <Button type="button" variant="destructive" onClick={onConfirm} disabled={del.isPending}>
             {del.isPending ? "Deleting…" : "Delete audio"}
           </Button>
         </DialogFooter>

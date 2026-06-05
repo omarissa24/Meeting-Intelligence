@@ -58,8 +58,10 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (220 tests incl. history-view/search-input/search-results; typecheck + lint)
 
 ## Wave 6 — Detail surface
-- [ ] `meeting-detail-view.tsx` (edit affordances, remove `-mx-3` hack), `meeting-audio-player.tsx`, `participants-section.tsx` (Avatar via shadcn CLI)
-- [ ] Gate green
+- [x] `meeting-detail-view.tsx`: editable title (read + edit) on `.text-title`, surface-hover edit affordances, ramp empty/error titles
+- [x] **Removed the brittle `-mx-3` highlight hack** — reduced the `<ol>` padding to `px-3` and gave every segment row `px-3`, so the deep-link highlight fills its own padding box (now `bg-surface-selected`) with no negative-margin bleed
+- [x] `meeting-audio-player.tsx` + `participants-section.tsx`: unified `.text-eyebrow` section labels (kept the existing custom speaker avatar — no shadcn Avatar churn needed)
+- [x] Gate green (meeting-detail-view tests; 220 total; typecheck + lint)
 
 ## Wave 7 — Auth, settings, dialogs
 - [ ] `login-view.tsx` (first impression), `settings-sheet.tsx` (FieldGroup/Field), `keyboard-shortcuts-dialog.tsx`

@@ -70,9 +70,7 @@ export function ParticipantsSection({ meeting }: ParticipantsSectionProps) {
       className="border-b px-6 py-3"
       data-testid="participants-section"
     >
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Participants
-      </h3>
+      <h3 className="mb-2 text-eyebrow">Participants</h3>
       <ul className="flex flex-wrap gap-x-4 gap-y-2">
         {speakerIds.map((speakerId) => (
           <li key={speakerId} className="flex min-w-0 items-center gap-2">

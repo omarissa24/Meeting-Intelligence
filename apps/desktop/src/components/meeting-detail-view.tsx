@@ -253,9 +253,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
                 }}
               />
             ) : (
-              <h2 className="truncate font-display text-xl font-normal tracking-tight text-muted-foreground">
-                Loading…
-              </h2>
+              <h2 className="truncate text-title text-muted-foreground">Loading…</h2>
             )}
           </div>
         </div>
@@ -309,7 +307,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
           <EmptyTranscript />
         ) : query.data ? (
           <ScrollArea className="h-full">
-            <ol className="flex flex-col gap-3 px-6 py-5">
+            <ol className="flex flex-col gap-2 px-3 py-5">
               {query.data.segments.map((seg) => (
                 <SegmentItem
                   key={seg.id}
@@ -407,10 +405,9 @@ function EditableTitle({
         type="button"
         onClick={beginEdit}
         className={cn(
-          "block w-full max-w-full truncate rounded-md text-left",
-          "font-display text-xl font-normal tracking-tight",
-          "px-1 py-0.5 -mx-1",
-          "transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none",
+          "block w-full max-w-full truncate rounded-md text-left text-title",
+          "-mx-1 px-1 py-0.5",
+          "transition-base hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
           isFallback ? "text-muted-foreground" : "text-foreground",
         )}
         aria-label="Edit meeting title"
@@ -431,7 +428,7 @@ function EditableTitle({
         onKeyDown={onKeyDown}
         aria-label="Meeting title"
         aria-invalid={tooLong || undefined}
-        className={cn("h-9 font-display text-xl font-normal tracking-tight", "bg-transparent")}
+        className={cn("h-9 text-title", "bg-transparent")}
         maxLength={MAX_TITLE_LENGTH + 50}
       />
       {tooLong ? (
@@ -521,9 +518,9 @@ function EditableTagList({
               aria-label={`Remove tag ${tag}`}
               className={cn(
                 "ml-1 inline-flex size-4 items-center justify-center rounded-full",
-                "text-muted-foreground transition-colors",
-                "hover:bg-foreground/10 hover:text-foreground",
-                "focus-visible:bg-foreground/10 focus-visible:text-foreground focus-visible:outline-none",
+                "text-muted-foreground transition-fast",
+                "hover:bg-surface-hover hover:text-foreground",
+                "focus-visible:bg-surface-hover focus-visible:text-foreground focus-visible:outline-none",
               )}
             >
               <X className="size-3" aria-hidden />
@@ -575,8 +572,8 @@ function SegmentItem({
     <li
       ref={ref}
       className={cn(
-        "flex gap-3 rounded-md transition-colors",
-        isHighlighted && "bg-primary/5 -mx-3 px-3 py-1.5",
+        "flex gap-3 rounded-md px-3 py-1.5 transition-base",
+        isHighlighted && "bg-surface-selected",
       )}
     >
       {segment.speakerId ? (
@@ -609,7 +606,7 @@ function EmptyTranscript() {
   return (
     <Empty className="m-6 flex-1 border">
       <EmptyHeader>
-        <EmptyTitle className="font-display text-xl font-normal">No transcript</EmptyTitle>
+        <EmptyTitle className="text-title">No transcript</EmptyTitle>
         <EmptyDescription>
           This meeting didn&apos;t produce any final transcript segments.
         </EmptyDescription>
@@ -622,9 +619,7 @@ function ErrorView({ onRetry }: { onRetry: () => void }) {
   return (
     <Empty className="m-6 flex-1 border">
       <EmptyHeader>
-        <EmptyTitle className="font-display text-xl font-normal">
-          Couldn&apos;t load this meeting
-        </EmptyTitle>
+        <EmptyTitle className="text-title">Couldn&apos;t load this meeting</EmptyTitle>
         <EmptyDescription>
           The backend didn&apos;t respond. Check your connection and try again.
         </EmptyDescription>
