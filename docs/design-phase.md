@@ -70,7 +70,12 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (220 tests incl. keyboard-shortcuts-dialog; typecheck + lint)
 
 ## Wave 8 — Cross-cutting QA
-- [ ] `prefers-reduced-motion` honoured on every animated surface
-- [ ] focus-visible coverage + `aria-label`s on all icon buttons
-- [ ] dark-mode parity sweep (incl. raised scrim)
-- [ ] final consistency pass against the contract in both themes
+- [x] `prefers-reduced-motion` honoured globally (Wave-0 guard neutralizes every animation/transition incl. the infinite `breathe`)
+- [x] focus-visible coverage + `aria-label`s — audited: every `size="icon*"` button has an accessible name (`aria-label` or `sr-only` text)
+- [x] dark-mode parity — audited: **no hardcoded colors anywhere**; fixed the one real bug (reconnect-banner tinted strips, Wave 3); the lone `text-accent-foreground` sits on a **full** `bg-accent` (correct contrast, not a tint); raised light-mode scrim verified
+- [x] Final consistency pass: grep sweep clean — no hex/rgb/named-tailwind colors, ad-hoc `text-foreground/xx` tints removed (only the intentional scrollbar `bg-foreground/15` remains)
+- [x] Final gate: full Tailwind build + all-workspace typecheck + 220 tests + lint all green
+
+---
+
+**Phase 4.5 complete.** Every page, component, and style now consumes the documented contract; the editorial-calm identity is preserved and elevated. Remaining work is manual visual QA on a running app (`pnpm tauri:dev`, both themes + OS Reduce-Motion).
