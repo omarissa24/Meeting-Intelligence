@@ -14,7 +14,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDuration } from "@/lib/format-duration";
-import { formatRelativeDate } from "@/lib/format-date";
+import { formatRelativeDate, formatTime } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 
 /**
@@ -90,7 +90,7 @@ function SearchHitRow({
           {title}
         </h3>
         <span className="shrink-0 text-xs text-muted-foreground">
-          {formatRelativeDate(hit.meetingStartedAt)}
+          {formatRelativeDate(hit.meetingStartedAt)} · {formatTime(hit.meetingStartedAt)}
         </span>
       </div>
       <div className="flex items-start gap-3">

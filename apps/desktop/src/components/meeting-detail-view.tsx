@@ -17,7 +17,7 @@ import { useMeetingDetail } from "@/hooks/use-meeting-detail";
 import { usePatchActionItem } from "@/hooks/use-patch-action-item";
 import { useSummariseMeeting } from "@/hooks/use-summarise-meeting";
 import { useUpdateMeeting } from "@/hooks/use-update-meeting";
-import { formatRelativeDate } from "@/lib/format-date";
+import { formatRelativeDate, formatTime } from "@/lib/format-date";
 import { formatDuration } from "@/lib/format-duration";
 import { displaySpeakerLabel } from "@/lib/speaker-label";
 import { cn } from "@/lib/utils";
@@ -219,6 +219,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
     return {
       title: m.title,
       date: formatRelativeDate(m.startedAt),
+      time: formatTime(m.startedAt),
       duration: m.durationSeconds != null ? formatDuration(m.durationSeconds * 1000) : "—",
       speakerCount: m.speakerCount ?? 0,
       tags: m.tags,
@@ -260,6 +261,8 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
         {headerMeta ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span>{headerMeta.date}</span>
+            <span aria-hidden>·</span>
+            <span className="tabular-nums">{headerMeta.time}</span>
             <span aria-hidden>·</span>
             <span className="tabular-nums">{headerMeta.duration}</span>
             {headerMeta.speakerCount > 0 ? (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRelativeDate } from "./format-date";
+import { formatRelativeDate, formatTime } from "./format-date";
 
 describe("formatRelativeDate", () => {
   const reference = new Date(2026, 5, 3, 12, 0, 0); // 2026-06-03 local
@@ -40,5 +40,21 @@ describe("formatRelativeDate", () => {
     expect(formatRelativeDate(null)).toBe("—");
     expect(formatRelativeDate(undefined)).toBe("—");
     expect(formatRelativeDate("not a date")).toBe("—");
+  });
+});
+
+describe("formatTime", () => {
+  it("renders a clock time for a valid timestamp", () => {
+    const out = formatTime(new Date(2026, 5, 3, 15, 0, 0).toISOString());
+    // Locale-dependent (12h vs 24h, AM/PM placement) — assert only that
+    // it produced an hour:minute time, not the bare em-dash.
+    expect(out).not.toBe("—");
+    expect(out).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it("returns the em-dash for null / unparseable input", () => {
+    expect(formatTime(null)).toBe("—");
+    expect(formatTime(undefined)).toBe("—");
+    expect(formatTime("not a date")).toBe("—");
   });
 });

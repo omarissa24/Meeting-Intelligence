@@ -42,3 +42,21 @@ export function formatRelativeDate(iso: string | null | undefined, now: Date = n
     ...(sameYear ? {} : { year: "numeric" }),
   }).format(d);
 }
+
+/**
+ * Render the local clock time for a meeting timestamp, e.g. `3:00 PM`.
+ * Locale-driven (mirrors session-ended's `formatTimeRange`) so it follows
+ * the OS 12/24-hour preference. `null` / unparseable inputs render as `—`,
+ * matching {@link formatRelativeDate}. Pairs with `formatRelativeDate` in
+ * the history / detail metadata rows: `Today · 3:00 PM · 45s`.
+ */
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(d);
+}

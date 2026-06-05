@@ -19,7 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMeetingsList } from "@/hooks/use-meetings-list";
 import { useSearch } from "@/hooks/use-search";
-import { formatRelativeDate } from "@/lib/format-date";
+import { formatRelativeDate, formatTime } from "@/lib/format-date";
 import { formatDuration } from "@/lib/format-duration";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
@@ -177,6 +177,8 @@ function MeetingRow({ meeting, onOpen }: { meeting: Meeting; onOpen: () => void 
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span>{formatRelativeDate(meeting.startedAt)}</span>
+          <span aria-hidden>·</span>
+          <span className="tabular-nums">{formatTime(meeting.startedAt)}</span>
           <span aria-hidden>·</span>
           <span className="tabular-nums">{duration}</span>
           {speakerCount > 0 ? (

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Copy, History as HistoryIcon, Mic } from "lucide-react";
+import { ArrowLeft, Copy, History as HistoryIcon, Mic } from "lucide-react";
 import { toast } from "sonner";
 
 import { MeetingSummary } from "@/components/meeting-summary";
@@ -39,6 +39,8 @@ const SUMMARY_POLL_INTERVAL_MS = 3_000;
 
 export function SessionEndedView() {
   const { start } = useRecording();
+  const reset = useRecordingStore((s) => s.reset);
+  const clearLines = useTranscriptStore((s) => s.clear);
   const goHistory = useUiStore((s) => s.goHistory);
   const startedAt = useRecordingStore((s) => s.startedAt);
   const endedAt = useRecordingStore((s) => s.endedAt);
@@ -101,11 +103,34 @@ export function SessionEndedView() {
     goHistory();
   };
 
+  // Return to the idle home/record screen. AppShell keys the
+  // SessionEnded → RecordControl swap on the recording phase, so
+  // reset() (→ idle) is what brings the home screen back. Clear the
+  // transcript first so home shows its "nothing said yet" empty state
+  // rather than the just-ended session's lines.
+  const handleGoHome = () => {
+    clearLines();
+    reset();
+  };
+
   return (
     <Card className="flex h-full flex-col overflow-hidden">
       <CardHeader className="border-b">
-        <CardTitle className="text-title">Session ended</CardTitle>
-        <CardDescription>{formatTimeRange(startedAt, endedAt)}</CardDescription>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Back to home"
+            onClick={handleGoHome}
+          >
+            <ArrowLeft />
+          </Button>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <CardTitle className="text-title">Session ended</CardTitle>
+            <CardDescription>{formatTimeRange(startedAt, endedAt)}</CardDescription>
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="flex flex-1 min-h-0 flex-col gap-4 overflow-y-auto p-6">
         <div className="shrink-0">
