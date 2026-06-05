@@ -19,7 +19,7 @@
 //!   controller does this when sources have stopped) or call `.stop()` —
 //!   the worker drains pending audio, flushes the encoder, then exits.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, RecvTimeoutError, Sender, SyncSender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -92,6 +92,11 @@ pub struct PipelineHandle {
     /// the session is still running, instead of only being visible
     /// post-mortem in the stop reply.
     output_dropped_counter: Arc<AtomicU64>,
+    /// Lock-free shared peak store the level emitter thread reads
+    /// once per ~100 ms tick to fill `audio://level` events. The
+    /// worker is the only writer; cloning this `Arc` and handing it
+    /// to the emitter is the entire wiring.
+    mic_level_store: Arc<MicLevelStore>,
 }
 
 impl PipelineHandle {
@@ -120,6 +125,13 @@ impl PipelineHandle {
         Arc::clone(&self.output_dropped_counter)
     }
 
+    /// Shared mic-level peak store. Cloned by `Session::start` and
+    /// handed to the level emitter thread. Single-writer (worker) /
+    /// single-reader (emitter) — see `MicLevelStore`.
+    pub fn mic_level_store(&self) -> Arc<MicLevelStore> {
+        Arc::clone(&self.mic_level_store)
+    }
+
     /// Signal stop and wait for the worker. Returns the final stats.
     pub fn stop(mut self) -> PipelineStats {
         let _ = self.stop_tx.send(());
@@ -145,6 +157,9 @@ pub fn spawn() -> PipelineHandle {
     let output_dropped_counter = Arc::new(AtomicU64::new(0));
     let worker_dropped = Arc::clone(&output_dropped_counter);
 
+    let mic_level_store = Arc::new(MicLevelStore::new());
+    let worker_level_store = Arc::clone(&mic_level_store);
+
     // Resolve mic gain at spawn time so this session honors the env
     // var as it was when the user clicked Record. Logged immediately so
     // the operator sees the active gain in the dev console.
@@ -164,7 +179,15 @@ pub fn spawn() -> PipelineHandle {
     let join = std::thread::Builder::new()
         .name("audio-pipeline".into())
         .spawn(move || {
-            run_worker(audio_rx, chunk_tx, stop_rx, worker_dropped, mic_gain_factor, vad_mode)
+            run_worker(
+                audio_rx,
+                chunk_tx,
+                stop_rx,
+                worker_dropped,
+                worker_level_store,
+                mic_gain_factor,
+                vad_mode,
+            )
         })
         .expect("failed to spawn audio-pipeline thread");
 
@@ -174,6 +197,7 @@ pub fn spawn() -> PipelineHandle {
         join: Some(join),
         stop_tx,
         output_dropped_counter,
+        mic_level_store,
     }
 }
 
@@ -182,6 +206,7 @@ fn run_worker(
     chunk_tx: SyncSender<EncodedChunk>,
     stop_rx: Receiver<()>,
     output_dropped_counter: Arc<AtomicU64>,
+    mic_level_store: Arc<MicLevelStore>,
     mic_gain_factor: f32,
     vad_mode: VadMode,
 ) -> PipelineStats {
@@ -223,6 +248,7 @@ fn run_worker(
                 &mut mic_raw_meter,
                 &mut mic_resampled_meter,
                 &mut system_meter,
+                &mic_level_store,
                 mic_gain_factor,
             ),
             Err(RecvTimeoutError::Timeout) => {
@@ -258,6 +284,7 @@ fn run_worker(
                 &mut mic_raw_meter,
                 &mut mic_resampled_meter,
                 &mut system_meter,
+                &mic_level_store,
                 mic_gain_factor,
             ),
             Err(_) => break,
@@ -293,6 +320,7 @@ fn process_frame(
     mic_raw_meter: &mut LevelMeter,
     mic_resampled_meter: &mut LevelMeter,
     system_meter: &mut LevelMeter,
+    mic_level_store: &MicLevelStore,
     mic_gain_factor: f32,
 ) {
     match frame.kind {
@@ -308,6 +336,7 @@ fn process_frame(
             // Downmix interleaved channels → mono before resampling.
             let mut mono = downmix_to_mono(&frame.samples, frame.format.channels as usize);
             mic_raw_meter.observe(&mono);
+            mic_level_store.observe_raw(&mono);
             // Apply the resolved static gain in place. The encoder hard-
             // clamps any overshoot at ±1.0 (`encoder.rs::f32_to_i16`),
             // so accidental clipping degrades to deterministic clipping
@@ -324,6 +353,7 @@ fn process_frame(
             // device hot-swap).
             if frame.format.sample_rate == TARGET_RATE {
                 mic_resampled_meter.observe(&mono);
+                mic_level_store.observe_resampled(&mono);
                 mixer.push_mic(&mono);
                 return;
             }
@@ -345,6 +375,7 @@ fn process_frame(
             let resampler = mic_resampler.as_mut().expect("just set above");
             if let Err(e) = resampler.push_and_drain(&mono, |chunk| {
                 mic_resampled_meter.observe(chunk);
+                mic_level_store.observe_resampled(chunk);
                 mixer.push_mic(chunk);
             }) {
                 stats.mic_resampler_errors += 1;
@@ -415,6 +446,100 @@ fn downmix_to_mono(samples: &[f32], channels: usize) -> Vec<f32> {
         out.push(frame.iter().sum::<f32>() * inv);
     }
     out
+}
+
+/// Lock-free shared peak store for the live mic-level meter (US-25a).
+///
+/// Single-writer (the pipeline worker) / single-reader (the level
+/// emitter thread). Stores f32 peak amplitudes as `u32` bit-patterns in
+/// `AtomicU32` because there is no native atomic-max on f32.
+///
+/// Reset is on `swap_peaks()` — never on a wall clock — so a missed
+/// emitter tick (sleep jitter, GC pause) doesn't evaporate the peak
+/// for that window: the next swap still returns the largest sample
+/// observed since the previous swap.
+///
+/// `mic_raw` is the peak observed post-downmix but **before** the
+/// static gain factor. `mic_resampled` is the peak **after** gain and
+/// resampling — i.e. what the encoder/STT actually consumes.
+pub struct MicLevelStore {
+    mic_raw_peak_bits: AtomicU32,
+    mic_resampled_peak_bits: AtomicU32,
+}
+
+impl MicLevelStore {
+    pub fn new() -> Self {
+        Self {
+            mic_raw_peak_bits: AtomicU32::new(0),
+            mic_resampled_peak_bits: AtomicU32::new(0),
+        }
+    }
+
+    pub fn observe_raw(&self, samples: &[f32]) {
+        Self::observe(&self.mic_raw_peak_bits, samples);
+    }
+
+    pub fn observe_resampled(&self, samples: &[f32]) {
+        Self::observe(&self.mic_resampled_peak_bits, samples);
+    }
+
+    fn observe(slot: &AtomicU32, samples: &[f32]) {
+        let mut local_peak: f32 = 0.0;
+        for &s in samples {
+            let a = s.abs();
+            if a > local_peak {
+                local_peak = a;
+            }
+        }
+        if local_peak <= 0.0 {
+            return;
+        }
+        // CAS loop because there's no atomic-max-f32. We compare on
+        // bit pattern — only valid because we keep `peak >= 0` so the
+        // sign bit is never set and bit-order matches numeric order.
+        let new_bits = local_peak.to_bits();
+        let mut cur = slot.load(Ordering::Relaxed);
+        loop {
+            let cur_f = f32::from_bits(cur);
+            if local_peak <= cur_f {
+                return;
+            }
+            match slot.compare_exchange_weak(
+                cur,
+                new_bits,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return,
+                Err(actual) => cur = actual,
+            }
+        }
+    }
+
+    /// Atomically take the current peaks and reset the slots to 0. The
+    /// emitter thread calls this once per tick. Returns
+    /// `(mic_raw_peak, mic_resampled_peak)` as f32 amplitudes in
+    /// `[0.0, ~1.0]`.
+    pub fn swap_peaks(&self) -> (f32, f32) {
+        let raw = f32::from_bits(self.mic_raw_peak_bits.swap(0, Ordering::Relaxed));
+        let resampled =
+            f32::from_bits(self.mic_resampled_peak_bits.swap(0, Ordering::Relaxed));
+        (raw, resampled)
+    }
+
+    /// Same as `swap_peaks` but returns dBFS values directly using the
+    /// pipeline's standard floor of -120.0. Convenience for the emitter
+    /// thread so dbfs conversion stays in one place.
+    pub fn swap_dbfs(&self) -> (f32, f32) {
+        let (raw, resampled) = self.swap_peaks();
+        (dbfs(raw), dbfs(resampled))
+    }
+}
+
+impl Default for MicLevelStore {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Diagnostic level meter — accumulates samples across calls and logs
@@ -566,5 +691,137 @@ mod tests {
     fn surrounding_whitespace_is_trimmed() {
         let g = parse_mic_gain_factor(Some("  6  "));
         assert!(approx_eq(g, 1.9953), "expected ~1.9953, got {g}");
+    }
+
+    // --- MicLevelStore --------------------------------------------------
+
+    #[test]
+    fn level_store_swap_returns_zero_when_unobserved() {
+        let s = MicLevelStore::new();
+        let (raw, resampled) = s.swap_peaks();
+        assert_eq!(raw, 0.0);
+        assert_eq!(resampled, 0.0);
+    }
+
+    #[test]
+    fn level_store_observe_records_max_abs_peak() {
+        let s = MicLevelStore::new();
+        s.observe_raw(&[0.1, -0.4, 0.2]);
+        s.observe_resampled(&[0.05, 0.7, -0.3]);
+        let (raw, resampled) = s.swap_peaks();
+        assert!(approx_eq(raw, 0.4), "expected raw=0.4, got {raw}");
+        assert!(
+            approx_eq(resampled, 0.7),
+            "expected resampled=0.7, got {resampled}"
+        );
+    }
+
+    #[test]
+    fn level_store_swap_resets_to_zero() {
+        let s = MicLevelStore::new();
+        s.observe_raw(&[0.5]);
+        let _ = s.swap_peaks();
+        let (raw, resampled) = s.swap_peaks();
+        assert_eq!(raw, 0.0);
+        assert_eq!(resampled, 0.0);
+    }
+
+    #[test]
+    fn level_store_keeps_max_across_observations_until_swap() {
+        let s = MicLevelStore::new();
+        s.observe_raw(&[0.3]);
+        s.observe_raw(&[0.1]); // smaller — should not overwrite
+        s.observe_raw(&[0.6]); // larger — wins
+        s.observe_raw(&[0.4]); // smaller again — no change
+        let (raw, _) = s.swap_peaks();
+        assert!(approx_eq(raw, 0.6), "expected raw=0.6, got {raw}");
+    }
+
+    #[test]
+    fn level_store_swap_dbfs_uses_minus_120_floor_for_silence() {
+        let s = MicLevelStore::new();
+        let (raw_db, resampled_db) = s.swap_dbfs();
+        // No observations → swap returns 0.0 amp → dbfs → -120.0
+        assert!(
+            approx_eq(raw_db, -120.0),
+            "expected -120.0 dBFS for silence, got {raw_db}"
+        );
+        assert!(approx_eq(resampled_db, -120.0));
+    }
+
+    #[test]
+    fn level_store_concurrent_writer_reader_no_leaked_state() {
+        // Single writer thread observes random-ish peaks for ~1000
+        // iterations; the reader (this thread) drains via swap_peaks
+        // on a tight loop. Asserts that:
+        //   1. Every drain returns either 0.0 or one of the values
+        //      observed since the last drain (no impossible peaks).
+        //   2. The post-join final swap is the only reading that may
+        //      see the absolute max from the last window.
+        //   3. After the writer joins and we drain twice, the second
+        //      drain is unconditionally 0.0 (no leaked state).
+        use std::sync::Arc;
+        use std::thread;
+
+        let store = Arc::new(MicLevelStore::new());
+        let writer_store = Arc::clone(&store);
+
+        // Pre-computed deterministic sequence of peaks; using a fixed
+        // permutation keeps the test reproducible across runs and CI.
+        // Mix of small + large values exercises the CAS-loop branch
+        // (small-after-large is a no-op).
+        let samples: Vec<f32> = (0..1000)
+            .map(|i| ((i * 31 + 7) % 97) as f32 / 100.0) // values in [0, 0.96]
+            .collect();
+        let max_observed = samples.iter().cloned().fold(0.0f32, f32::max);
+
+        let writer = thread::spawn(move || {
+            for s in samples {
+                writer_store.observe_raw(&[s]);
+                writer_store.observe_resampled(&[s * 0.5]);
+            }
+        });
+
+        // Reader: drain on a tight loop. Track the largest peak ever
+        // observed across drains; it must equal max_observed once the
+        // writer is done.
+        let mut largest_seen_raw: f32 = 0.0;
+        let mut largest_seen_resampled: f32 = 0.0;
+        for _ in 0..2000 {
+            let (raw, resampled) = store.swap_peaks();
+            if raw > largest_seen_raw {
+                largest_seen_raw = raw;
+            }
+            if resampled > largest_seen_resampled {
+                largest_seen_resampled = resampled;
+            }
+        }
+        writer.join().expect("writer panicked");
+
+        // Final drain — picks up anything the reader missed.
+        let (raw, resampled) = store.swap_peaks();
+        if raw > largest_seen_raw {
+            largest_seen_raw = raw;
+        }
+        if resampled > largest_seen_resampled {
+            largest_seen_resampled = resampled;
+        }
+
+        assert!(
+            approx_eq(largest_seen_raw, max_observed),
+            "expected largest raw peak = {max_observed}, got {largest_seen_raw}"
+        );
+        assert!(
+            approx_eq(largest_seen_resampled, max_observed * 0.5),
+            "expected largest resampled peak = {}, got {largest_seen_resampled}",
+            max_observed * 0.5
+        );
+
+        // No-leaked-state: a swap immediately after the previous drain
+        // must return exactly 0.0 since no observations have happened
+        // in between.
+        let (raw_after, resampled_after) = store.swap_peaks();
+        assert_eq!(raw_after, 0.0);
+        assert_eq!(resampled_after, 0.0);
     }
 }

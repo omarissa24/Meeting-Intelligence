@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AudioChunkPayload,
   AudioErrorPayload,
+  MicLevelPayload,
   PerfStatsPayload,
 } from "./audio-bridge";
 
@@ -17,14 +18,12 @@ const listenCalls: ListenCall[] = [];
 const unlistenSpies: ReturnType<typeof vi.fn>[] = [];
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(
-    async <T>(event: string, handler: Handler<T>) => {
-      listenCalls.push({ event, handler: handler as Handler<unknown> });
-      const unlisten = vi.fn();
-      unlistenSpies.push(unlisten);
-      return unlisten;
-    },
-  ),
+  listen: vi.fn(async <T>(event: string, handler: Handler<T>) => {
+    listenCalls.push({ event, handler: handler as Handler<unknown> });
+    const unlisten = vi.fn();
+    unlistenSpies.push(unlisten);
+    return unlisten;
+  }),
 }));
 
 beforeEach(() => {
@@ -152,6 +151,57 @@ describe("subscribePerfStats", () => {
   it("returns the unlisten function from listen()", async () => {
     const { subscribePerfStats } = await importBridge();
     const unlisten = await subscribePerfStats("session-A", vi.fn());
+    expect(unlisten).toBe(unlistenSpies[0]);
+  });
+});
+
+describe("subscribeMicLevel", () => {
+  it("subscribes to audio://level", async () => {
+    const { subscribeMicLevel } = await importBridge();
+    const onLevel = vi.fn();
+    await subscribeMicLevel("session-A", onLevel);
+
+    expect(listenCalls).toHaveLength(1);
+    expect(listenCalls[0].event).toBe("audio://level");
+  });
+
+  it("forwards levels for the matching session", async () => {
+    const { subscribeMicLevel } = await importBridge();
+    const onLevel = vi.fn();
+    await subscribeMicLevel("session-A", onLevel);
+
+    const handler = listenCalls[0].handler as Handler<MicLevelPayload>;
+    const payload: MicLevelPayload = {
+      sessionId: "session-A",
+      micRawDbfs: -18.5,
+      micResampledDbfs: -16.3,
+    };
+    handler({ payload });
+
+    expect(onLevel).toHaveBeenCalledTimes(1);
+    expect(onLevel.mock.calls[0][0]).toEqual(payload);
+  });
+
+  it("filters out levels from other sessions", async () => {
+    const { subscribeMicLevel } = await importBridge();
+    const onLevel = vi.fn();
+    await subscribeMicLevel("session-A", onLevel);
+
+    const handler = listenCalls[0].handler as Handler<MicLevelPayload>;
+    handler({
+      payload: {
+        sessionId: "session-OTHER",
+        micRawDbfs: -18.5,
+        micResampledDbfs: -16.3,
+      },
+    });
+
+    expect(onLevel).not.toHaveBeenCalled();
+  });
+
+  it("returns the unlisten function from listen()", async () => {
+    const { subscribeMicLevel } = await importBridge();
+    const unlisten = await subscribeMicLevel("session-A", vi.fn());
     expect(unlisten).toBe(unlistenSpies[0]);
   });
 });

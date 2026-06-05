@@ -1,5 +1,6 @@
 import { Mic, Square } from "lucide-react";
 
+import { MicLevelMeter } from "@/components/mic-level-meter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RecordingPhase } from "@/stores/recording-store";
@@ -70,6 +71,10 @@ export function RecordControl({ phase, elapsedMs, onStart, onStop }: RecordContr
           {formatElapsed(elapsedMs)}
         </span>
       </div>
+
+      {/* Live input meter — self-gates on the recording phase, so it's
+          present at all times but only renders while recording. */}
+      <MicLevelMeter />
     </div>
   );
 }

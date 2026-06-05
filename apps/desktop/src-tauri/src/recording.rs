@@ -42,7 +42,7 @@ use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::audio::encoder::EncodedChunk;
 use crate::audio::cpal_mic::CpalMicSource;
-use crate::audio::pipeline::{self, PipelineHandle, PipelineStats};
+use crate::audio::pipeline::{self, MicLevelStore, PipelineHandle, PipelineStats};
 use crate::audio::traits::{MicSource, SourceCounters, SourceError, SystemSource};
 
 #[cfg(target_os = "macos")]
@@ -67,11 +67,22 @@ pub const EVENT_AUDIO_ERROR: &str = "audio://error";
 /// observationally during a recording instead of guessing. Subscribers
 /// listen via `audio-bridge.ts::subscribePerfStats`.
 pub const EVENT_PERF_STATS: &str = "perf://stats";
+/// ~10 Hz mic-level meter event for the live recording UI (US-25a).
+/// Frontend subscribes via `audio-bridge.ts::subscribeMicLevel`. Two
+/// dBFS values per tick: raw (post-downmix, pre-gain) and resampled
+/// (post-gain, what STT consumes).
+pub const EVENT_AUDIO_LEVEL: &str = "audio://level";
 
 /// Cadence for the perf-monitor thread's sample → emit cycle. 1 s
 /// matches the `LevelMeter` cadence in `pipeline.rs`, fine-grained
 /// enough to catch spikes without flooding the IPC bus.
 const PERF_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
+/// Cadence for the level-meter emitter thread. 100 ms (~10 Hz) is the
+/// US-25a target — fast enough to feel real-time, slow enough that the
+/// IPC bus and React rendering layer aren't taxed. The store's
+/// swap-on-read semantics mean a missed tick still picks up its peak
+/// on the next read, so jitter doesn't evaporate state.
+const LEVEL_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +115,24 @@ pub struct PerfStatsPayload {
     pub cpu_percent: f32,
     pub rss_mb: f32,
     pub uptime_ms: u64,
+}
+
+/// Per-tick payload for `audio://level` (US-25a). Both values are
+/// dBFS with a -120.0 floor for silence (matches `pipeline::dbfs`).
+/// Negative numbers — the UI converts to a 0..=1 width via
+/// `(dbfs + 60) / 60` clamped.
+///
+/// `mic_raw_dbfs` is the device-side peak before the static gain
+/// factor (`MIC_GAIN_DB`); `mic_resampled_dbfs` is the post-gain,
+/// post-resample peak (what the encoder/STT consumes). Operators read
+/// the gap between the two to decide whether the gain compensation is
+/// pulling speech into Deepgram's sweet spot or just clipping it.
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MicLevelPayload {
+    pub session_id: String,
+    pub mic_raw_dbfs: f32,
+    pub mic_resampled_dbfs: f32,
 }
 
 /// Stats handed back to the Tauri stop command, surfaced to the UI as
@@ -152,6 +181,12 @@ pub struct Session {
     /// lifetime; signal `perf_stop_tx` then `.join()` to tear it down.
     perf_join: Option<JoinHandle<()>>,
     perf_stop_tx: Sender<()>,
+    /// ~10 Hz mic-level emitter thread (US-25a). Reads peaks from the
+    /// pipeline's `MicLevelStore` and emits `audio://level`. Same
+    /// lifecycle as the perf thread: signal `level_stop_tx` then
+    /// `.join()`.
+    level_join: Option<JoinHandle<()>>,
+    level_stop_tx: Sender<()>,
     /// True when `start` requested a non-default mic device by label
     /// but the device wasn't found and we fell back to the system
     /// default. Read by the orchestrator after `start` to decide
@@ -253,6 +288,18 @@ impl Session {
             perf_stop_rx,
         );
 
+        // Live mic-level meter (US-25a). Grab the shared peak store
+        // before `pipeline` is moved into the struct below, then spawn a
+        // ~10 Hz thread that drains it into `audio://level` events.
+        let mic_level_store = pipeline.mic_level_store();
+        let (level_stop_tx, level_stop_rx) = mpsc::channel::<()>();
+        let level_join = spawn_level_emitter_thread(
+            app.clone(),
+            session_id.clone(),
+            mic_level_store,
+            level_stop_rx,
+        );
+
         Ok(Self {
             session_id,
             mic: Box::new(mic),
@@ -261,6 +308,8 @@ impl Session {
             emitter: Some(emitter),
             perf_join: Some(perf_join),
             perf_stop_tx,
+            level_join: Some(level_join),
+            level_stop_tx,
             mic_fell_back_to_default,
         })
     }
@@ -324,6 +373,13 @@ impl Session {
             let _ = handle.join();
         }
 
+        // 5. Level emitter — same teardown as the perf monitor. Worst
+        //    case it wakes from its 100 ms tick before exiting.
+        let _ = self.level_stop_tx.send(());
+        if let Some(handle) = self.level_join.take() {
+            let _ = handle.join();
+        }
+
         merge_stats(
             mic_counters,
             system_counters,
@@ -351,6 +407,10 @@ impl Drop for Session {
         }
         let _ = self.perf_stop_tx.send(());
         if let Some(handle) = self.perf_join.take() {
+            let _ = handle.join();
+        }
+        let _ = self.level_stop_tx.send(());
+        if let Some(handle) = self.level_join.take() {
             let _ = handle.join();
         }
     }
@@ -491,6 +551,42 @@ fn spawn_perf_monitor_thread<R: Runtime>(
             }
         })
         .expect("failed to spawn perf-monitor thread")
+}
+
+/// Live mic-level meter thread (US-25a). Once per `LEVEL_SAMPLE_INTERVAL`
+/// it drains the pipeline's `MicLevelStore` (swap-on-read, so a missed
+/// tick still picks up its window's peak) and emits an `audio://level`
+/// event carrying both the raw (pre-gain, device-side) and resampled
+/// (post-gain, what STT consumes) peaks in dBFS.
+///
+/// Same teardown contract as the perf-monitor thread: it blocks on
+/// `stop_rx.recv_timeout`, so `Session::stop` signals then joins it.
+fn spawn_level_emitter_thread<R: Runtime>(
+    app: AppHandle<R>,
+    session_id: String,
+    mic_level_store: Arc<MicLevelStore>,
+    stop_rx: Receiver<()>,
+) -> JoinHandle<()> {
+    std::thread::Builder::new()
+        .name("level-emitter".into())
+        .spawn(move || loop {
+            match stop_rx.recv_timeout(LEVEL_SAMPLE_INTERVAL) {
+                Ok(()) => break,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+
+            let (mic_raw_dbfs, mic_resampled_dbfs) = mic_level_store.swap_dbfs();
+            let payload = MicLevelPayload {
+                session_id: session_id.clone(),
+                mic_raw_dbfs,
+                mic_resampled_dbfs,
+            };
+            if let Err(e) = app.emit(EVENT_AUDIO_LEVEL, payload) {
+                eprintln!("level-emitter: emit failed: {e}");
+            }
+        })
+        .expect("failed to spawn level-emitter thread")
 }
 
 fn maybe_emit_drop_notice<R: Runtime>(

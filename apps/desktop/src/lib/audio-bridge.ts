@@ -47,9 +47,28 @@ export interface PerfStatsPayload {
   uptimeMs: number;
 }
 
+/**
+ * Per-tick mic level from the Rust level-emitter thread (US-25a).
+ * Mirrors `recording::MicLevelPayload` (camelCase via serde). Emitted
+ * ~10 Hz while recording.
+ *
+ * Both values are dBFS with a -120.0 floor for silence. `micRawDbfs`
+ * is the device-side peak **before** the static gain factor;
+ * `micResampledDbfs` is the post-gain, post-resample peak — i.e. what
+ * the encoder/STT actually consumes. The meter shows both so the user
+ * can see whether their input is healthy independent of the gain
+ * compensation.
+ */
+export interface MicLevelPayload {
+  sessionId: string;
+  micRawDbfs: number;
+  micResampledDbfs: number;
+}
+
 const EVENT_AUDIO_CHUNK = "audio://chunk";
 const EVENT_AUDIO_ERROR = "audio://error";
 const EVENT_PERF_STATS = "perf://stats";
+const EVENT_MIC_LEVEL = "audio://level";
 
 /**
  * Subscribe to `audio://chunk` events for the duration of a session.
@@ -98,5 +117,22 @@ export async function subscribePerfStats(
   return listen<PerfStatsPayload>(EVENT_PERF_STATS, (event) => {
     if (event.payload.sessionId !== sessionId) return;
     onStats(event.payload);
+  });
+}
+
+/**
+ * Subscribe to `audio://level` for the lifetime of a session. Fires
+ * ~10 Hz with the latest mic peaks (raw + resampled) in dBFS. Filters
+ * by `sessionId` so a stale listener from a prior session doesn't bleed
+ * levels into the current one. Returned unlisten function is called on
+ * stop or component unmount.
+ */
+export async function subscribeMicLevel(
+  sessionId: string,
+  onLevel: (payload: MicLevelPayload) => void,
+): Promise<UnlistenFn> {
+  return listen<MicLevelPayload>(EVENT_MIC_LEVEL, (event) => {
+    if (event.payload.sessionId !== sessionId) return;
+    onLevel(event.payload);
   });
 }

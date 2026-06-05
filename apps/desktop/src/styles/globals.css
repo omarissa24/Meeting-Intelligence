@@ -59,6 +59,14 @@
   --recording: oklch(0.62 0.2 25);
   --recording-glow: oklch(0.62 0.2 25 / 0.35);
 
+  /* Mic-level meter bands (US-25a) — green/amber/red traffic light for
+   * input health. The base palette has no healthy-green, so --meter-good
+   * is a genuinely new semantic token; warn/bad echo accent/destructive
+   * but are named for the meter so the component stays semantic. */
+  --meter-good: oklch(0.62 0.13 150);
+  --meter-warn: oklch(0.78 0.14 75);
+  --meter-bad: oklch(0.55 0.2 27);
+
   --radius: 0.625rem;
 
   --motion-fast: 120ms;
@@ -109,6 +117,10 @@
 
   --recording: oklch(0.66 0.2 25);
   --recording-glow: oklch(0.66 0.2 25 / 0.35);
+
+  --meter-good: oklch(0.7 0.12 150);
+  --meter-warn: oklch(0.82 0.13 75);
+  --meter-bad: oklch(0.6 0.2 25);
 }
 
 @theme inline {
@@ -149,6 +161,10 @@
 
   --color-recording: var(--recording);
   --color-recording-glow: var(--recording-glow);
+
+  --color-meter-good: var(--meter-good);
+  --color-meter-warn: var(--meter-warn);
+  --color-meter-bad: var(--meter-bad);
 
   --font-sans: var(--font-sans);
   --font-display: var(--font-display);
