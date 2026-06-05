@@ -44,10 +44,10 @@ export function PermissionPrompt({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Allow Meeting Intelligence to listen</DialogTitle>
+          <DialogTitle className="text-title">Allow Meeting Intelligence to listen</DialogTitle>
           <DialogDescription>
-            Two macOS permissions are needed before the first
-            recording. Both prompts will appear after you continue.
+            Two macOS permissions are needed before the first recording. Both prompts will appear
+            after you continue.
           </DialogDescription>
         </DialogHeader>
 
@@ -68,24 +68,17 @@ export function PermissionPrompt({
               <Monitor className="size-4" />
             </span>
             <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium">
-                Screen &amp; System Audio Recording
-              </p>
+              <p className="text-sm font-medium">Screen &amp; System Audio Recording</p>
               <p className="text-muted-foreground text-sm">
-                Captures the meeting&rsquo;s audio (Zoom, Teams,
-                Meet&hellip;). Only the audio is read; the screen
-                image is discarded.
+                Captures the meeting&rsquo;s audio (Zoom, Teams, Meet&hellip;). Only the audio is
+                read; the screen image is discarded.
               </p>
             </div>
           </li>
         </ul>
 
         <DialogFooter>
-          <Button
-            variant="ghost"
-            onClick={() => onOpenChange(false)}
-            disabled={pending}
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={pending}>
             Not now
           </Button>
           <Button onClick={onRequest} disabled={pending}>

@@ -57,7 +57,9 @@ export function ReconnectBanner({ onRetry }: ReconnectBannerProps) {
         <Loader2 className="size-4 animate-spin" />
         <span>
           Reconnecting · attempt {phase.attempt + 1} · retrying in {remainingS}s
-          {bufferedCount > 0 ? ` · ${bufferedCount} chunk${bufferedCount === 1 ? "" : "s"} buffered` : ""}
+          {bufferedCount > 0
+            ? ` · ${bufferedCount} chunk${bufferedCount === 1 ? "" : "s"} buffered`
+            : ""}
         </span>
       </Strip>
     );
@@ -83,9 +85,7 @@ export function ReconnectBanner({ onRetry }: ReconnectBannerProps) {
     return (
       <Strip tone="success">
         <AlertTriangle className="size-4" />
-        <span>
-          Reconnected. A short gap may appear in the transcript while we caught up.
-        </span>
+        <span>Reconnected. A short gap may appear in the transcript while we caught up.</span>
       </Strip>
     );
   }
@@ -105,13 +105,12 @@ function Strip({
       role="status"
       aria-live="polite"
       className={cn(
-        "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
-        tone === "warning" &&
-          "border-accent/40 bg-accent/15 text-accent-foreground",
-        tone === "error" &&
-          "border-destructive/40 bg-destructive/10 text-destructive",
-        tone === "success" &&
-          "border-accent/30 bg-accent/10 text-accent-foreground",
+        "flex animate-rise-in items-center gap-2 rounded-lg border px-3 py-2 text-sm",
+        // text-foreground (not accent-foreground): the tint is mostly
+        // transparent, so on-amber ink would be dark-on-dark in dark mode.
+        tone === "warning" && "border-accent/40 bg-accent/15 text-foreground",
+        tone === "error" && "border-destructive/40 bg-destructive/10 text-destructive",
+        tone === "success" && "border-accent/30 bg-accent/10 text-foreground",
       )}
     >
       {children}

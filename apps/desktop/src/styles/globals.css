@@ -323,11 +323,13 @@
   }
 }
 
-@layer components {
+@layer utilities {
   /* Typography ramp (Phase 4.5). The implicit heading sizes are now a
    * documented scale, so surfaces consume `.text-title` etc. instead of
    * re-deriving bespoke size/leading/tracking combos. Instrument Serif
-   * carries display + titles; IBM Plex Sans carries body + labels. */
+   * carries display + titles; IBM Plex Sans carries body + labels.
+   * In @layer utilities (not components) so a ramp class overrides a
+   * primitive's base type utilities (e.g. CardTitle's `text-base`). */
   .text-eyebrow {
     @apply text-xs font-medium uppercase text-muted-foreground;
     letter-spacing: 0.14em;

@@ -37,8 +37,13 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (build, 220 tests, lint)
 
 ## Wave 3 — Recording surface
-- [ ] `record-control.tsx` hero (concentric rings + breathing live glow), `transcript-panel.tsx`, `mic-level-meter.tsx`, `reconnect-banner.tsx`, `connection-status.tsx`, `permission-prompt.tsx`
-- [ ] Gate green
+- [x] `record-control.tsx`: hero now has a soft breathing live halo, tactile hover-grow/press, baked `--recording-hover` (killed the color-mix hack), type-ramp eyebrow + numeral timer
+- [x] `transcript-panel.tsx`: `.text-title` titles, cleaner system-note tint
+- [x] `reconnect-banner.tsx`: fixed dark-mode contrast (accent-foreground → foreground on tinted strips) + rise-in entrance
+- [x] `permission-prompt.tsx`: editorial `.text-title` heading
+- [x] `connection-status.tsx` / `mic-level-meter.tsx`: already purpose-tuned — left as-is
+- [x] (foundation fix) moved the type-ramp to `@layer utilities` so `.text-title` overrides primitive base type (verified via cascade offset)
+- [x] Gate green (build, 220 tests, lint)
 
 ## Wave 4 — Session-ended + summary
 - [ ] `session-ended-view.tsx` (editorial stat numerals, transcript review), `meeting-summary.tsx` (hierarchy + content-shaped skeleton)

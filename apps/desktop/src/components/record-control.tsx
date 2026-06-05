@@ -32,42 +32,44 @@ export function RecordControl({ phase, elapsedMs, onStart, onStop }: RecordContr
 
   return (
     <div className="flex items-center gap-6">
-      <Button
-        type="button"
-        aria-label={live ? "Stop recording" : "Start recording"}
-        onClick={live ? onStop : onStart}
-        disabled={busy}
-        className={cn(
-          // Hero sizing — bigger than any default size variant.
-          "size-16 rounded-full p-0 transition-shadow",
-          live
-            ? "bg-[var(--recording)] text-primary-foreground shadow-[0_0_0_6px_var(--recording-glow)] hover:bg-[color-mix(in_oklch,var(--recording),var(--foreground)_8%)]"
-            : "bg-foreground text-background hover:bg-foreground/85",
-        )}
-      >
+      <div className="relative flex items-center justify-center">
+        {/* Live: a soft breathing halo behind the button — the one place
+            the amber-distinct recording red is allowed to perform. */}
         {live ? (
-          <Square data-icon="inline-start" className="size-5 fill-current" />
-        ) : (
-          <Mic data-icon="inline-start" className="size-6" />
-        )}
-      </Button>
+          <span
+            aria-hidden
+            className="absolute -inset-2 animate-breathe rounded-full bg-recording-glow blur-md"
+          />
+        ) : null}
+        <Button
+          type="button"
+          aria-label={live ? "Stop recording" : "Start recording"}
+          onClick={live ? onStop : onStart}
+          disabled={busy}
+          className={cn(
+            // Hero sizing — bigger than any default size variant.
+            "relative size-16 rounded-full p-0 transition-base hover:scale-[1.04] active:scale-95",
+            live
+              ? "bg-recording text-primary-foreground shadow-[0_0_0_5px_var(--recording-glow)] hover:bg-recording-hover"
+              : "bg-foreground text-background elevation-card hover:bg-foreground/90",
+          )}
+        >
+          {live ? (
+            <Square data-icon="inline-start" className="size-5 fill-current" />
+          ) : (
+            <Mic data-icon="inline-start" className="size-6" />
+          )}
+        </Button>
+      </div>
 
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           {live ? (
-            <span
-              aria-hidden
-              className="size-2 animate-breathe rounded-full bg-[var(--recording)]"
-            />
+            <span aria-hidden className="size-2 animate-breathe rounded-full bg-recording" />
           ) : null}
-          <span className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-            {phaseLabel(phase)}
-          </span>
+          <span className="text-eyebrow">{phaseLabel(phase)}</span>
         </div>
-        <span
-          aria-live="polite"
-          className="font-display text-4xl leading-none tabular-nums text-foreground"
-        >
+        <span aria-live="polite" className="text-numeral text-4xl leading-none text-foreground">
           {formatElapsed(elapsedMs)}
         </span>
       </div>

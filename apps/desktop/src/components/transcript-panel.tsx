@@ -35,8 +35,7 @@ export function TranscriptPanel() {
     if (!node) return;
     const viewport = node.querySelector('[data-slot="scroll-area-viewport"]');
     if (!(viewport instanceof HTMLElement)) return;
-    const distanceFromBottom =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
+    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
     if (distanceFromBottom < AUTOSCROLL_NEAR_BOTTOM_PX) {
       viewport.scrollTop = viewport.scrollHeight;
     }
@@ -45,9 +44,7 @@ export function TranscriptPanel() {
   return (
     <Card className="flex h-full flex-col overflow-hidden">
       <CardHeader className="border-b">
-        <CardTitle className="font-display text-xl font-normal tracking-tight">
-          Live transcript
-        </CardTitle>
+        <CardTitle className="text-title">Live transcript</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 overflow-hidden p-0">
         {lines.length === 0 ? (
@@ -69,11 +66,8 @@ export function TranscriptPanel() {
 function TranscriptItem({ line }: { line: TranscriptLine }) {
   if (line.speakerId === SYSTEM_SPEAKER_ID) {
     return (
-      <li
-        role="note"
-        className="animate-line-in flex justify-center"
-      >
-        <p className="text-xs italic text-muted-foreground/80 max-w-prose text-center">
+      <li role="note" className="animate-line-in flex justify-center py-1">
+        <p className="max-w-prose text-center text-xs italic text-muted-foreground">
           — {line.text} —
         </p>
       </li>
@@ -103,7 +97,7 @@ function EmptyView() {
         <EmptyMedia variant="icon">
           <CaptionsOff />
         </EmptyMedia>
-        <EmptyTitle className="font-display text-xl font-normal">Nothing said yet</EmptyTitle>
+        <EmptyTitle className="text-title">Nothing said yet</EmptyTitle>
         <EmptyDescription>
           Press record to start a session. Live transcript appears here as the meeting unfolds.
         </EmptyDescription>
