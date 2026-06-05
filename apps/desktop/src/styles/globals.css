@@ -289,6 +289,16 @@
     box-shadow: var(--shadow-overlay);
   }
 
+  /* Atmosphere: a barely-perceptible warm halo from the top, layered over
+   * a solid surface. Editorial calm — a faint light source, not a glow. */
+  .app-atmosphere {
+    background-image: radial-gradient(
+      125% 80% at 50% -15%,
+      color-mix(in oklch, var(--accent) 5%, transparent),
+      transparent 55%
+    );
+  }
+
   /* "Panels rise into place." Heavier sibling of animate-line-in, for
    * cards / sections rather than individual transcript lines. */
   @keyframes rise-in {

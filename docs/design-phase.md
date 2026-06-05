@@ -31,10 +31,10 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate green (build emits all utilities; 220 tests; lint clean)
 
 ## Wave 2 — App chrome & atmosphere
-- [ ] `app-shell.tsx` header/footer rhythm, replace "Foundation" placeholder, nav affordances
-- [ ] View-transition choreography between recording/history/detail (progressive enhancement)
-- [ ] Restrained background atmosphere (barely-perceptible warmth/grain)
-- [ ] Gate green
+- [x] `app-shell.tsx`: replaced the "Foundation" placeholder with an amber brand-dot wordmark
+- [x] View entrance: keyed `animate-rise-in` on the main region (recording/history/detail swap) — reliable CSS, reduced-motion-safe (chosen over the View Transitions API)
+- [x] Restrained background atmosphere: `.app-atmosphere` faint warm top halo (5% accent)
+- [x] Gate green (build, 220 tests, lint)
 
 ## Wave 3 — Recording surface
 - [ ] `record-control.tsx` hero (concentric rings + breathing live glow), `transcript-panel.tsx`, `mic-level-meter.tsx`, `reconnect-banner.tsx`, `connection-status.tsx`, `permission-prompt.tsx`

@@ -94,15 +94,16 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-background text-foreground">
+    <div className="flex h-screen flex-col bg-background app-atmosphere text-foreground">
       <header className="flex items-center justify-between px-8 py-5">
-        <div className="flex items-baseline gap-3">
+        <div className="flex items-center gap-2.5">
+          <span
+            aria-hidden
+            className="size-2 rounded-full bg-accent shadow-[0_0_0_3px_color-mix(in_oklch,var(--accent)_22%,transparent)]"
+          />
           <h1 className="font-display text-2xl font-normal leading-none tracking-tight">
             Meeting Intelligence
           </h1>
-          <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-            Foundation
-          </span>
         </div>
         <div className="flex items-center gap-1">
           {historyBrowsable && view === "recording" ? (
@@ -120,33 +121,35 @@ export function AppShell() {
         </div>
       </header>
 
-      <main className="flex flex-1 flex-col gap-6 overflow-hidden px-8 pb-6">
-        {view === "recording" ? (
-          <>
-            {!isSessionEnded ? (
-              <section className="flex justify-center py-6">
-                <RecordControl
-                  phase={phase}
-                  elapsedMs={elapsedMs}
-                  onStart={handleStart}
-                  onStop={handleStop}
-                />
+      <main className="flex flex-1 flex-col overflow-hidden px-8 pb-6">
+        <div key={view} className="flex min-h-0 flex-1 animate-rise-in flex-col gap-6">
+          {view === "recording" ? (
+            <>
+              {!isSessionEnded ? (
+                <section className="flex justify-center py-6">
+                  <RecordControl
+                    phase={phase}
+                    elapsedMs={elapsedMs}
+                    onStart={handleStart}
+                    onStop={handleStop}
+                  />
+                </section>
+              ) : null}
+              <ReconnectBanner onRetry={handleRetry} />
+              <section className="min-h-0 flex-1">
+                {isSessionEnded ? <SessionEndedView /> : <TranscriptPanel />}
               </section>
-            ) : null}
-            <ReconnectBanner onRetry={handleRetry} />
+            </>
+          ) : view === "history" ? (
             <section className="min-h-0 flex-1">
-              {isSessionEnded ? <SessionEndedView /> : <TranscriptPanel />}
+              <HistoryView />
             </section>
-          </>
-        ) : view === "history" ? (
-          <section className="min-h-0 flex-1">
-            <HistoryView />
-          </section>
-        ) : view === "detail" && selectedMeetingId ? (
-          <section className="min-h-0 flex-1">
-            <MeetingDetailView meetingId={selectedMeetingId} />
-          </section>
-        ) : null}
+          ) : view === "detail" && selectedMeetingId ? (
+            <section className="min-h-0 flex-1">
+              <MeetingDetailView meetingId={selectedMeetingId} />
+            </section>
+          ) : null}
+        </div>
       </main>
 
       <footer className="flex items-center justify-between gap-4 border-t border-border px-8 py-3 text-xs">
