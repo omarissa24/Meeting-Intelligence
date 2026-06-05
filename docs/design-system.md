@@ -24,14 +24,14 @@ raw values. Key app-specific tokens beyond the shadcn set:
 
 ## Typography
 
-Instrument Serif (display) + IBM Plex Sans (body/labels), self-hosted via `@fontsource`.
+IBM Plex Mono (display) + IBM Plex Sans (body/labels), self-hosted via `@fontsource`.
 Consume the ramp utilities — don't re-derive size/leading/tracking per component:
 
 | Utility | Use | Resolves to |
 | --- | --- | --- |
-| `.text-display` | Hero / page titles | Instrument Serif, 3xl, leading 1.05, tracking-tight |
-| `.text-title` | Card / section titles | Instrument Serif, xl, leading-snug, tracking-tight |
-| `.text-numeral` | Editorial stat numbers, timers | Instrument Serif, tabular-nums, tracking-tight (size set at call site) |
+| `.text-display` | Hero / page titles | IBM Plex Mono, 3xl, leading 1.05, tracking-tight |
+| `.text-title` | Card / section titles | IBM Plex Mono, xl, leading-snug, tracking-tight |
+| `.text-numeral` | Editorial stat numbers, timers | IBM Plex Mono, tabular-nums, tracking-tight (size set at call site) |
 | `.text-body` | Prose / readable copy | sans, sm, leading-relaxed |
 | `.text-eyebrow` | The **one** canonical uppercase micro-label | xs, medium, uppercase, `letter-spacing: 0.14em`, muted |
 | `.text-caption` | Secondary/meta text | xs, muted |
