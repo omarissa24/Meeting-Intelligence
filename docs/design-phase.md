@@ -23,8 +23,12 @@ visual pass in **both light and dark** + an OS Reduce-Motion pass. Tick items in
 - [x] Gate: `pnpm build` compiles Tailwind clean
 
 ## Wave 1 — Primitive refinement (`components/ui/*`)
-- [ ] Card, Button, Badge, Input, Empty, Skeleton, Dialog/Sheet/Popover surfaces, ScrollArea, Select, Switch, Kbd consume Wave-0 tokens (elevation, transition-base, interaction tints, focus ring)
-- [ ] Gate green
+- [x] Card → soft `.elevation-card` lift (keeps the hairline ring)
+- [x] Button + Badge → `transition-fast` (settle easing, replaces flat `transition-all`)
+- [x] Input → `transition-base` on focus
+- [x] Dialog + Sheet surfaces → `.elevation-overlay` (proper depth under the raised scrim)
+- [x] ScrollArea thumb → visible-but-quiet `bg-foreground/15` + hover
+- [x] Gate green (build emits all utilities; 220 tests; lint clean)
 
 ## Wave 2 — App chrome & atmosphere
 - [ ] `app-shell.tsx` header/footer rhythm, replace "Foundation" placeholder, nav affordances
