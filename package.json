@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "concurrently --names api,app --prefix-colors blue,magenta --kill-others-on-fail \"pnpm dev:api\" \"pnpm dev:app\"",
-    "dev:web": "concurrently --names api,web --prefix-colors blue,cyan --kill-others-on-fail \"pnpm dev:api\" \"pnpm --filter @meeting-intelligence/desktop dev\"",
+    "dev:web": "pnpm --filter @meeting-intelligence/web dev",
     "dev:api": "cd backend && uv run uvicorn meeting_intelligence.main:app --reload --port 8000",
     "dev:app": "pnpm --filter @meeting-intelligence/desktop tauri:dev",
     "tauri:dev": "pnpm --filter @meeting-intelligence/desktop tauri:dev",
@@ -30,5 +30,19 @@
     "concurrently": "^10.0.0",
     "prettier": "^3.3.3",
     "typescript": "^5.6.3"
+  },
+  "pnpm": {
+    "packageExtensions": {
+      "lucide-react": {
+        "peerDependencies": {
+          "@types/react": "*"
+        },
+        "peerDependenciesMeta": {
+          "@types/react": {
+            "optional": true
+          }
+        }
+      }
+    }
   }
 }

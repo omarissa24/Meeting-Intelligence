@@ -1,0 +1,351 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system — ported verbatim from apps/desktop/src/styles/globals.css.
+ *
+ * Aesthetic: "instrument-grade tool with editorial calm." The marketing site
+ * runs dark-only (deep blue-black canvas, one disciplined amber accent), so the
+ * <html> element carries the `dark` class and the `.dark` block below is always
+ * active. Fonts are wired through next/font (Geist + Geist Mono) instead of
+ * @fontsource — the only deviation from the desktop file. Tokens are defined
+ * after the shadcn import so they take precedence.
+ */
+
+:root {
+  --background: oklch(0.985 0.012 80);
+  --foreground: oklch(0.22 0.015 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.015 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.015 260);
+  --primary: oklch(0.22 0.015 260);
+  --primary-foreground: oklch(0.985 0.012 80);
+  --secondary: oklch(0.95 0.012 80);
+  --secondary-foreground: oklch(0.28 0.015 260);
+  --muted: oklch(0.95 0.012 80);
+  --muted-foreground: oklch(0.52 0.012 260);
+  --accent: oklch(0.78 0.14 75);
+  --accent-foreground: oklch(0.22 0.015 260);
+  --destructive: oklch(0.55 0.2 27);
+  --destructive-foreground: oklch(0.985 0.012 80);
+  --border: oklch(0.89 0.008 260);
+  --input: oklch(0.89 0.008 260);
+  --ring: oklch(0.78 0.14 75);
+
+  --chart-1: oklch(0.78 0.14 75);
+  --chart-2: oklch(0.55 0.1 200);
+  --chart-3: oklch(0.45 0.12 30);
+  --chart-4: oklch(0.62 0.1 140);
+  --chart-5: oklch(0.45 0.12 290);
+
+  --sidebar: oklch(0.98 0.012 80);
+  --sidebar-foreground: oklch(0.22 0.015 260);
+  --sidebar-primary: oklch(0.22 0.015 260);
+  --sidebar-primary-foreground: oklch(0.985 0.012 80);
+  --sidebar-accent: oklch(0.95 0.012 80);
+  --sidebar-accent-foreground: oklch(0.28 0.015 260);
+  --sidebar-border: oklch(0.89 0.008 260);
+  --sidebar-ring: oklch(0.78 0.14 75);
+
+  /* Single non-shadcn token: the live-recording indicator.
+   * Distinct from --destructive (which is reserved for error states). */
+  --recording: oklch(0.62 0.2 25);
+  --recording-hover: oklch(0.58 0.2 25);
+  --recording-glow: oklch(0.62 0.2 25 / 0.35);
+
+  /* Mic-level meter bands — green/amber/red traffic light for input health. */
+  --meter-good: oklch(0.62 0.13 150);
+  --meter-warn: oklch(0.78 0.14 75);
+  --meter-bad: oklch(0.55 0.2 27);
+
+  /* Modal scrim. */
+  --overlay: oklch(0.15 0.02 260 / 0.3);
+
+  /* Interaction tints — surface-agnostic washes for hover / pressed / selected. */
+  --surface-hover: oklch(0.22 0.015 260 / 0.045);
+  --surface-pressed: oklch(0.22 0.015 260 / 0.08);
+  --surface-selected: oklch(0.78 0.14 75 / 0.12);
+
+  /* Elevation — soft, low-spread shadows. */
+  --shadow-card: 0 1px 2px oklch(0.22 0.015 260 / 0.04), 0 4px 12px oklch(0.22 0.015 260 / 0.05);
+  --shadow-overlay: 0 8px 30px oklch(0.2 0.015 260 / 0.14), 0 2px 8px oklch(0.2 0.015 260 / 0.08);
+
+  --radius: 0.625rem;
+
+  --motion-fast: 120ms;
+  --motion-base: 220ms;
+  --motion-slow: 420ms;
+  --motion-easing: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* One family, everywhere — Geist, loaded via next/font. Geist Mono is the
+   * same family's monospace cut, used only where true fixed-width matters
+   * (kbd chips, URLs, version strings). No third typeface ever loads. */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.dark {
+  --background: oklch(0.16 0.018 260);
+  --foreground: oklch(0.93 0.015 80);
+  --card: oklch(0.19 0.018 260);
+  --card-foreground: oklch(0.93 0.015 80);
+  --popover: oklch(0.19 0.018 260);
+  --popover-foreground: oklch(0.93 0.015 80);
+  --primary: oklch(0.93 0.015 80);
+  --primary-foreground: oklch(0.19 0.018 260);
+  --secondary: oklch(0.24 0.015 260);
+  --secondary-foreground: oklch(0.93 0.015 80);
+  --muted: oklch(0.24 0.015 260);
+  --muted-foreground: oklch(0.68 0.012 260);
+  --accent: oklch(0.82 0.13 75);
+  --accent-foreground: oklch(0.19 0.018 260);
+  --destructive: oklch(0.6 0.2 25);
+  --destructive-foreground: oklch(0.93 0.015 80);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.13);
+  --ring: oklch(0.82 0.13 75);
+
+  --chart-1: oklch(0.82 0.13 75);
+  --chart-2: oklch(0.65 0.1 200);
+  --chart-3: oklch(0.55 0.13 30);
+  --chart-4: oklch(0.7 0.1 140);
+  --chart-5: oklch(0.55 0.13 290);
+
+  --sidebar: oklch(0.18 0.018 260);
+  --sidebar-foreground: oklch(0.93 0.015 80);
+  --sidebar-primary: oklch(0.82 0.13 75);
+  --sidebar-primary-foreground: oklch(0.19 0.018 260);
+  --sidebar-accent: oklch(0.24 0.015 260);
+  --sidebar-accent-foreground: oklch(0.93 0.015 80);
+  --sidebar-border: oklch(1 0 0 / 0.1);
+  --sidebar-ring: oklch(0.82 0.13 75);
+
+  --recording: oklch(0.66 0.2 25);
+  --recording-hover: oklch(0.72 0.2 25);
+  --recording-glow: oklch(0.66 0.2 25 / 0.35);
+
+  --meter-good: oklch(0.7 0.12 150);
+  --meter-warn: oklch(0.82 0.13 75);
+  --meter-bad: oklch(0.6 0.2 25);
+
+  --overlay: oklch(0 0 0 / 0.55);
+
+  --surface-hover: oklch(1 0 0 / 0.06);
+  --surface-pressed: oklch(1 0 0 / 0.1);
+  --surface-selected: oklch(0.82 0.13 75 / 0.16);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.3), 0 6px 16px oklch(0 0 0 / 0.25);
+  --shadow-overlay: 0 12px 40px oklch(0 0 0 / 0.5), 0 4px 12px oklch(0 0 0 / 0.4);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-recording: var(--recording);
+  --color-recording-hover: var(--recording-hover);
+  --color-recording-glow: var(--recording-glow);
+
+  --color-meter-good: var(--meter-good);
+  --color-meter-warn: var(--meter-warn);
+  --color-meter-bad: var(--meter-bad);
+
+  --color-overlay: var(--overlay);
+
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-pressed: var(--surface-pressed);
+  --color-surface-selected: var(--surface-selected);
+
+  --font-sans: var(--font-sans);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  /* "Breathes, doesn't strobe" — the live indicator. */
+  @keyframes breathe {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.55;
+      transform: scale(0.94);
+    }
+  }
+  .animate-breathe {
+    animation: breathe 1.6s ease-in-out infinite;
+  }
+
+  /* "Lines arrive, never appear." */
+  @keyframes line-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-line-in {
+    animation: line-in var(--motion-base) var(--motion-easing) both;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .transition-base {
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-duration: var(--motion-base);
+    transition-timing-function: var(--motion-easing);
+  }
+  .transition-fast {
+    transition-property:
+      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
+      opacity, box-shadow, transform, filter, backdrop-filter;
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--motion-easing);
+  }
+
+  /* Soft elevation utilities — pair a surface with depth without drama. */
+  .elevation-card {
+    box-shadow: var(--shadow-card);
+  }
+  .elevation-overlay {
+    box-shadow: var(--shadow-overlay);
+  }
+
+  /* Atmosphere: a barely-perceptible warm halo from the top, layered over
+   * a solid surface. Editorial calm — a faint light source, not a glow. */
+  .app-atmosphere {
+    background-image: radial-gradient(
+      125% 80% at 50% -15%,
+      color-mix(in oklch, var(--accent) 5%, transparent),
+      transparent 55%
+    );
+  }
+
+  /* "Panels rise into place." Heavier sibling of animate-line-in. */
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-rise-in {
+    animation: rise-in var(--motion-base) var(--motion-easing) both;
+  }
+
+  /* Staggered entrances. Pair with .animate-line-in / .animate-rise-in and set
+   * --stagger-index inline. Cap the index (~10) at the call site. */
+  .stagger-item {
+    animation-delay: calc(var(--stagger-index, 0) * 35ms);
+  }
+}
+
+@layer utilities {
+  /* Typography ramp. Geist carries everything — display, titles, body, labels —
+   * via weight and size, not a second typeface. In @layer utilities so a ramp
+   * class overrides a primitive's base type utilities. */
+  .text-eyebrow {
+    @apply text-xs font-medium uppercase text-muted-foreground;
+    letter-spacing: 0.14em;
+  }
+  .text-display {
+    @apply font-display text-3xl font-normal tracking-tight;
+    line-height: 1.05;
+  }
+  .text-title {
+    @apply font-display text-xl font-normal leading-snug tracking-tight;
+  }
+  .text-numeral {
+    @apply font-display tracking-tight;
+    font-variant-numeric: tabular-nums;
+  }
+  .text-body {
+    @apply text-sm leading-relaxed;
+  }
+  .text-caption {
+    @apply text-xs text-muted-foreground;
+  }
+}
+
+/* Accessibility: honour the OS "Reduce Motion" setting everywhere. Kept outside
+ * @layer so it always wins the cascade. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

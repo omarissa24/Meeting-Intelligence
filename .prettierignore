@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 .turbo/
+.next/
 coverage/
 **/src-tauri/target/
 **/src-tauri/gen/

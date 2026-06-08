@@ -1,0 +1,42 @@
+# Vercel deploys the marketing site (apps/web) with Root Directory = apps/web.
+# The whole repo is the deploy context (so the pnpm workspace + tsconfig.base.json
+# resolve), but we only need apps/web's source plus the workspace manifests.
+# Everything heavy or unrelated is excluded to stay under Vercel's file limit.
+
+# Dependencies — reinstalled on Vercel
+node_modules
+
+# VCS / tooling / planning
+.git
+.agents
+.claude
+.planning
+.github
+
+# Build outputs
+.next
+dist
+build
+coverage
+*.tsbuildinfo
+
+# Python backend (not part of the web build)
+backend
+
+# Local infra, docs, helper scripts
+infra
+docs
+scripts
+
+# Desktop app: keep its package.json/tsconfig so the pnpm workspace stays
+# consistent with the lockfile, but drop everything heavy we don't build here.
+apps/desktop/src
+apps/desktop/public
+apps/desktop/index.html
+apps/desktop/components.json
+src-tauri
+
+# Misc
+.venv
+*.log
+.DS_Store
