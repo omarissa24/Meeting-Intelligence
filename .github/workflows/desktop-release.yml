@@ -14,7 +14,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        # macOS builds on macos-26 (Xcode 26.x): apple-metal — a required
+        # transitive dep via screencapturekit — uses macOS 26-only Metal
+        # symbols that don't compile against older SDKs (macos-latest is
+        # macOS 15). See #1.
+        os: [macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
