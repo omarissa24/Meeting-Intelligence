@@ -7,9 +7,13 @@ import { cn } from "@/lib/utils";
  * combo like ⌘R. Semantic-token styled so it adapts to dark mode with
  * the rest of the app — no hardcoded colors.
  */
-function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
+const Kbd = React.forwardRef<HTMLElement, React.ComponentProps<"kbd">>(function Kbd(
+  { className, ...props },
+  ref,
+) {
   return (
     <kbd
+      ref={ref}
       data-slot="kbd"
       className={cn(
         "inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-border bg-muted px-1.5 font-mono text-xs font-medium text-muted-foreground",
@@ -18,6 +22,7 @@ function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
       {...props}
     />
   );
-}
+});
+Kbd.displayName = "Kbd";
 
 export { Kbd };
