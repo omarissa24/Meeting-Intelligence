@@ -7,12 +7,14 @@
 /*
  * Design system — ported verbatim from apps/desktop/src/styles/globals.css.
  *
- * Aesthetic: "instrument-grade tool with editorial calm." The marketing site
- * runs dark-only (deep blue-black canvas, one disciplined amber accent), so the
- * <html> element carries the `dark` class and the `.dark` block below is always
- * active. Fonts are wired through next/font (Geist + Geist Mono) instead of
- * @fontsource — the only deviation from the desktop file. Tokens are defined
- * after the shadcn import so they take precedence.
+ * Aesthetic: "instrument-grade tool with editorial calm" — one disciplined
+ * amber accent over a deep blue-black canvas in dark mode, a warm off-white in
+ * light. The site supports both themes via next-themes (see app/layout.tsx),
+ * which toggles the `dark` class on <html>; the `:root` block below is the light
+ * palette and the `.dark` block overrides it. Fonts are wired through next/font
+ * (Geist + Geist Mono) instead of @fontsource — the only deviation from the
+ * desktop file. Tokens are defined after the shadcn import so they take
+ * precedence.
  */
 
 :root {
@@ -307,6 +309,24 @@
    * --stagger-index inline. Cap the index (~10) at the call site. */
   .stagger-item {
     animation-delay: calc(var(--stagger-index, 0) * 35ms);
+  }
+
+  /* Scroll affordance — an arrow nudging downward toward the reveal below.
+   * A calm bob that brightens at the bottom of its travel, kin to the live
+   * indicator's cadence. */
+  @keyframes scroll-hint {
+    0%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.4;
+    }
+    50% {
+      transform: translateY(7px);
+      opacity: 1;
+    }
+  }
+  .animate-scroll-hint {
+    animation: scroll-hint 1.8s ease-in-out infinite;
   }
 }
 

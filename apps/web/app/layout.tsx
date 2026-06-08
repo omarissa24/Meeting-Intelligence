@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+import { ThemeProvider } from "@/components/theme-provider";
+import { ThemeToggle } from "@/components/theme-toggle";
+
 const geistSans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ?? "https://meeting-intelligence-murex.vercel.app";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://meeting-intelligence-murex.vercel.app";
 const title = "Meeting Intelligence — capture, transcribe & summarise every meeting";
 const description =
   "A native desktop app that captures meeting audio, transcribes it live, and turns it into LLM-summarised intelligence. Download for macOS and Windows.";
@@ -36,8 +38,22 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} dark`}>
-      <body className="min-h-dvh app-atmosphere">{children}</body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable}`}
+    >
+      <body className="min-h-dvh app-atmosphere">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <ThemeToggle />
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }
