@@ -74,18 +74,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS leg is non-blocking until apple-metal-0.8.7 (transitive
-        # via screencapturekit) is fixed upstream — its swift-bridge
-        # references symbols (MTLSamplerReductionMode, etc.) that
-        # moved in modern Xcode. Tracked in #1.
-        # Both macos-13 and macos-15-intel were tried and ruled out:
-        # macos-13 was retired by GitHub on 2025-12-04, and "Intel"
-        # only describes the CPU — not the SDK era — so macos-15-intel
-        # ships the same modern Xcode and reproduces the failure.
-        # Drop `continue-on-error` once #1 lands.
-        os: [macos-latest, windows-latest]
+        # apple-metal (transitive, required via screencapturekit)
+        # references macOS 26-only Metal symbols (MTLSamplerReductionMode,
+        # MTLSamplerDescriptor.reductionMode/.lodBias). They need the
+        # macOS 26 SDK to COMPILE — the `if #available(macOS 26, *)`
+        # runtime guard added in apple-metal 0.8.8 does not help, since the
+        # Swift compiler still type-checks the guarded body. macos-latest
+        # (macOS 15, Xcode < 26) lacks the symbols, so the macOS leg runs
+        # on the GA `macos-26` image (Xcode 26.x). Kept non-blocking only
+        # while we confirm macos-26 is green; drop it + close #1 after.
+        os: [macos-26, windows-latest]
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'macos-latest' }}
+    continue-on-error: ${{ matrix.os == 'macos-26' }}
     defaults:
       run:
         working-directory: apps/desktop/src-tauri
