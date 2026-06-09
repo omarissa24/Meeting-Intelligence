@@ -18,7 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
-import { BACKEND_HTTP_URL, CLIENT_VERSION } from "@/lib/config";
+import { BACKEND_HTTP_URL, CLIENT_VERSION, IS_PRODUCTION } from "@/lib/config";
 import { listAudioInputs } from "@/lib/tauri-commands";
 import { useAuthStore } from "@/stores/auth-store";
 import {
@@ -59,10 +59,12 @@ export function SettingsSheet() {
   const enableSystemAudio = useSettingsStore((s) => s.enableSystemAudio);
   const language = useSettingsStore((s) => s.language);
   const theme = useSettingsStore((s) => s.theme);
+  const autoDetectMeetings = useSettingsStore((s) => s.autoDetectMeetings);
   const setMicDeviceLabel = useSettingsStore((s) => s.setMicDeviceLabel);
   const setEnableSystemAudio = useSettingsStore((s) => s.setEnableSystemAudio);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setTheme = useSettingsStore((s) => s.setTheme);
+  const setAutoDetectMeetings = useSettingsStore((s) => s.setAutoDetectMeetings);
 
   const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
 
@@ -122,15 +124,17 @@ export function SettingsSheet() {
             </section>
           ) : null}
 
-          <section className="flex flex-col gap-2">
-            <h3 className="text-eyebrow">Backend</h3>
-            <div className="rounded-md border border-border bg-card px-3 py-2">
-              <p className="font-mono text-xs text-foreground break-all">{BACKEND_HTTP_URL}</p>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Override via the <code>VITE_BACKEND_URL</code> env var.
-            </p>
-          </section>
+          {!IS_PRODUCTION ? (
+            <section className="flex flex-col gap-2">
+              <h3 className="text-eyebrow">Backend</h3>
+              <div className="rounded-md border border-border bg-card px-3 py-2">
+                <p className="font-mono text-xs text-foreground break-all">{BACKEND_HTTP_URL}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Override via the <code>VITE_BACKEND_URL</code> env var.
+              </p>
+            </section>
+          ) : null}
 
           <section className="flex flex-col gap-2">
             <h3 className="text-eyebrow">Microphone</h3>
@@ -181,6 +185,23 @@ export function SettingsSheet() {
               checked={enableSystemAudio}
               onCheckedChange={(checked) => {
                 void setEnableSystemAudio(checked);
+              }}
+            />
+          </section>
+
+          <section className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-foreground">Auto-detect meetings</span>
+              <span className="text-xs text-muted-foreground">
+                Prompt me to record when a call starts (Zoom, Teams, Google Meet…). Runs locally and
+                always asks first — it never records on its own.
+              </span>
+            </div>
+            <Switch
+              aria-label="Auto-detect meetings"
+              checked={autoDetectMeetings}
+              onCheckedChange={(checked) => {
+                void setAutoDetectMeetings(checked);
               }}
             />
           </section>

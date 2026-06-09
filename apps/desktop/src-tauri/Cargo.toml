@@ -28,6 +28,10 @@ tauri-plugin-fs = "2"
 # is stable. We persist the mic device label, system-audio toggle, and
 # transcription language here.
 tauri-plugin-store = "2"
+# Phase 6 / meeting detection: OS notification when a meeting is detected
+# while the app is backgrounded. Sent from Rust via NotificationExt; needs
+# `notification:default` in capabilities/default.json.
+tauri-plugin-notification = "2"
 # Cross-platform OS credential store wrapper. Picks up Keychain on macOS
 # and the Credential Manager on Windows (FFI under the hood — no file IO,
 # so no fs capability needed). The `apple-native` and `windows-native`
@@ -71,12 +75,28 @@ screencapturekit = { version = "6", features = ["macos_13_0"] }
 # requestAccessForMediaType. block2 is needed for the request's
 # completion-handler block. Foundation supplies NSString and the runtime.
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", features = ["NSString", "NSThread"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSThread",
+    # Phase 6 detection: iterate NSWorkspace.runningApplications (NSArray
+    # + its `.iter()` need these).
+    "NSArray",
+    "NSEnumerator",
+] }
 objc2-av-foundation = { version = "0.3", features = [
     "AVCaptureDevice",
     "AVMediaFormat",
 ] }
 block2 = "0.6"
+# Phase 6 meeting detection (macOS). NSWorkspace enumerates running apps by
+# bundle id; objc2-core-audio reads the CoreAudio HAL
+# `kAudioDevicePropertyDeviceIsRunningSomewhere` to tell whether the mic is in
+# use. Both are permission-free metadata reads (no TCC / accessibility prompt).
+objc2-app-kit = { version = "0.3", features = [
+    "NSWorkspace",
+    "NSRunningApplication",
+] }
+objc2-core-audio = "0.3"
 
 # Windows-only audio capture deps. cpal handles the mic via WASAPI; the
 # `wasapi` crate is a thin wrapper around the Win32 audio API that lets
@@ -90,6 +110,9 @@ windows = { version = "0.58", features = [
     "Win32_Media_Audio",
     "Win32_System_Com",
     "Win32_Foundation",
+    # Phase 6 detection: read the microphone ConsentStore under HKCU to tell
+    # whether the mic is currently in use (LastUsedTimeStop == 0).
+    "Win32_System_Registry",
 ] }
 
 [[example]]

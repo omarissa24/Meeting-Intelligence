@@ -46,11 +46,15 @@ const KEY_MIC_LABEL = "mic_device_label";
 const KEY_SYSTEM_AUDIO = "enable_system_audio";
 const KEY_LANGUAGE = "language";
 const KEY_THEME = "theme";
+const KEY_AUTO_DETECT = "auto_detect_meetings";
 
 const DEFAULT_MIC_LABEL: string | null = null;
 const DEFAULT_SYSTEM_AUDIO = true;
 const DEFAULT_LANGUAGE: LanguageCode = "auto";
 const DEFAULT_THEME: ThemePreference = "system";
+// Phase 6: meeting auto-detection is on out-of-the-box (it always *asks*
+// before recording, never records silently).
+const DEFAULT_AUTO_DETECT = true;
 
 export interface RecordingSnapshot {
   /** null ⇒ "System default" (re-resolve at start). */
@@ -65,6 +69,8 @@ export interface SettingsStoreState {
   enableSystemAudio: boolean;
   language: LanguageCode;
   theme: ThemePreference;
+  /** Phase 6: prompt to record when a meeting is detected. */
+  autoDetectMeetings: boolean;
   hydrated: boolean;
 
   hydrate: () => Promise<void>;
@@ -72,6 +78,7 @@ export interface SettingsStoreState {
   setEnableSystemAudio: (enabled: boolean) => Promise<void>;
   setLanguage: (code: LanguageCode) => Promise<void>;
   setTheme: (preference: ThemePreference) => Promise<void>;
+  setAutoDetectMeetings: (enabled: boolean) => Promise<void>;
 
   /**
    * Read at recording-start to freeze the values used for this session.
@@ -127,6 +134,7 @@ interface LoadedSettings {
   enableSystemAudio: boolean;
   language: LanguageCode;
   theme: ThemePreference;
+  autoDetectMeetings: boolean;
 }
 
 async function readAndMigrate(store: Store): Promise<LoadedSettings> {
@@ -143,6 +151,7 @@ async function readAndMigrate(store: Store): Promise<LoadedSettings> {
       enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
       language: DEFAULT_LANGUAGE,
       theme: DEFAULT_THEME,
+      autoDetectMeetings: DEFAULT_AUTO_DETECT,
     };
   }
 
@@ -153,11 +162,13 @@ async function readAndMigrate(store: Store): Promise<LoadedSettings> {
     await store.set(KEY_SYSTEM_AUDIO, DEFAULT_SYSTEM_AUDIO);
     await store.set(KEY_LANGUAGE, DEFAULT_LANGUAGE);
     await store.set(KEY_THEME, DEFAULT_THEME);
+    await store.set(KEY_AUTO_DETECT, DEFAULT_AUTO_DETECT);
     return {
       micDeviceLabel: DEFAULT_MIC_LABEL,
       enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
       language: DEFAULT_LANGUAGE,
       theme: DEFAULT_THEME,
+      autoDetectMeetings: DEFAULT_AUTO_DETECT,
     };
   }
 
@@ -167,12 +178,16 @@ async function readAndMigrate(store: Store): Promise<LoadedSettings> {
   // `theme` (US-27) was added without a schema bump: an existing v1
   // file simply lacks the key, so the tolerant fallback yields "system".
   const themeRaw = await store.get(KEY_THEME);
+  // `auto_detect_meetings` (Phase 6) was likewise added without a bump — an
+  // existing v1 file lacks the key and falls back to the on-by-default value.
+  const autoDetectRaw = await store.get(KEY_AUTO_DETECT);
 
   return {
     micDeviceLabel: isNullableString(micRaw) ? micRaw : DEFAULT_MIC_LABEL,
     enableSystemAudio: isBoolean(sysRaw) ? sysRaw : DEFAULT_SYSTEM_AUDIO,
     language: isLanguageCode(langRaw) ? langRaw : DEFAULT_LANGUAGE,
     theme: isThemePreference(themeRaw) ? themeRaw : DEFAULT_THEME,
+    autoDetectMeetings: isBoolean(autoDetectRaw) ? autoDetectRaw : DEFAULT_AUTO_DETECT,
   };
 }
 
@@ -181,6 +196,7 @@ export const useSettingsStore = create<SettingsStoreState>()((set, get) => ({
   enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
   language: DEFAULT_LANGUAGE,
   theme: DEFAULT_THEME,
+  autoDetectMeetings: DEFAULT_AUTO_DETECT,
   hydrated: false,
 
   hydrate: async () => {
@@ -200,6 +216,7 @@ export const useSettingsStore = create<SettingsStoreState>()((set, get) => ({
         enableSystemAudio: DEFAULT_SYSTEM_AUDIO,
         language: DEFAULT_LANGUAGE,
         theme: DEFAULT_THEME,
+        autoDetectMeetings: DEFAULT_AUTO_DETECT,
         hydrated: true,
       });
     }
@@ -242,6 +259,16 @@ export const useSettingsStore = create<SettingsStoreState>()((set, get) => ({
       await store.set(KEY_THEME, preference);
     } catch (err) {
       console.error("settings-store: setTheme persist failed", err);
+    }
+  },
+
+  setAutoDetectMeetings: async (enabled) => {
+    set({ autoDetectMeetings: enabled });
+    try {
+      const store = await getStore();
+      await store.set(KEY_AUTO_DETECT, enabled);
+    } catch (err) {
+      console.error("settings-store: setAutoDetectMeetings persist failed", err);
     }
   },
 

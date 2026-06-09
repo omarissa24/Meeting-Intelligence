@@ -103,6 +103,31 @@ export async function requestAudioPermissions(): Promise<PermissionsSnapshot> {
   return invoke<PermissionsSnapshot>("request_audio_permissions");
 }
 
+// --- Meeting detection (Phase 6) -----------------------------------------
+
+/**
+ * Start the local meeting-detection monitor. Idempotent on the Rust side.
+ * Called when the user is authenticated AND the auto-detect setting is on.
+ * Rejects on platforms without a detector (Linux); callers ignore that.
+ */
+export async function startDetection(): Promise<void> {
+  return invoke<void>("start_detection");
+}
+
+/** Stop the detection monitor and join its poll thread. Idempotent. */
+export async function stopDetection(): Promise<void> {
+  return invoke<void>("stop_detection");
+}
+
+/**
+ * Apply a user dismissal to the running monitor. `snoozeSecs` set → snooze all
+ * prompts for that many seconds; omitted/null → permanently silence `appId`
+ * for this session ("never for this app").
+ */
+export async function detectionSuppress(appId: string, snoozeSecs?: number): Promise<void> {
+  return invoke<void>("detection_suppress", { appId, snoozeSecs: snoozeSecs ?? null });
+}
+
 // --- Auth (Phase 2 / US-08) ----------------------------------------------
 
 /**
