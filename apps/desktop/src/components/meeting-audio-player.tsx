@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { MeetingDetail } from "@meeting-intelligence/shared-types";
 
+import { AudioPlayer } from "@/components/audio-player";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -115,9 +116,11 @@ function ReadyState({ meeting }: { meeting: MeetingDetail }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <audio controls preload="metadata" src={audio.data.audioUrl} className="h-10 w-full">
-        <track kind="captions" />
-      </audio>
+      <AudioPlayer
+        key={audio.data.audioUrl}
+        src={audio.data.audioUrl}
+        fallbackDurationSeconds={meeting.durationSeconds}
+      />
       <div className="flex justify-end">
         <DeleteAudioButton meetingId={meeting.id} />
       </div>
