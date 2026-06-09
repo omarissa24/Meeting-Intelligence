@@ -46,7 +46,9 @@ def _build_provider() -> STTProvider:
             raise RuntimeError(
                 "STT_PROVIDER=deepgram requires DEEPGRAM_API_KEY to be set"
             )
-        return DeepgramNovaSTT(api_key=settings.deepgram_api_key)
+        return DeepgramNovaSTT(
+            api_key=settings.deepgram_api_key, model=settings.deepgram_model
+        )
     return InMemoryEchoSTT()
 
 

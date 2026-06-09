@@ -59,7 +59,7 @@ export interface SessionStarted {
   type: "session_started";
   sessionId: string;
   startedAt: string;
-  /** Identifier of the active STT implementation, e.g. "in-memory-echo" or "deepgram-nova-2". */
+  /** Identifier of the active STT implementation, e.g. "in-memory-echo" or "deepgram-nova-3". */
   sttProvider: string;
 }
 

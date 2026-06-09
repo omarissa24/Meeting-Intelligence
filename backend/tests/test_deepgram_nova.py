@@ -177,10 +177,10 @@ async def test_transcribe_passes_correct_connect_options(
         pass
 
     kwargs = patched_client["connect_kwargs"]
-    # Default call (no language argument) must NOT include the `language`
-    # kwarg — its absence is what flips Deepgram into auto-detect.
+    # Default call (no language argument) requests Nova-3 with multilingual
+    # code-switching (`language="multi"`).
     assert kwargs == {  # type: ignore[comparison-overlap]
-        "model": "nova-2",
+        "model": "nova-3",
         "encoding": "linear16",
         "sample_rate": 16000,
         "channels": 1,
@@ -188,10 +188,11 @@ async def test_transcribe_passes_correct_connect_options(
         "interim_results": True,
         "punctuate": True,
         "smart_format": True,
+        "language": "multi",
     }
 
 
-async def test_transcribe_omits_language_when_auto(
+async def test_transcribe_uses_multi_when_auto(
     patched_client: dict[str, object],
     patched_isinstance: None,
 ) -> None:
@@ -204,10 +205,10 @@ async def test_transcribe_omits_language_when_auto(
         pass
 
     kwargs: dict[str, object] = patched_client["connect_kwargs"]  # type: ignore[assignment]
-    assert "language" not in kwargs
+    assert kwargs.get("language") == "multi"
 
 
-async def test_transcribe_omits_language_when_none(
+async def test_transcribe_uses_multi_when_none(
     patched_client: dict[str, object],
     patched_isinstance: None,
 ) -> None:
@@ -220,7 +221,7 @@ async def test_transcribe_omits_language_when_none(
         pass
 
     kwargs: dict[str, object] = patched_client["connect_kwargs"]  # type: ignore[assignment]
-    assert "language" not in kwargs
+    assert kwargs.get("language") == "multi"
 
 
 async def test_transcribe_forwards_explicit_language(
@@ -347,3 +348,28 @@ def test_constructor_rejects_empty_api_key() -> None:
 
     with pytest.raises(ValueError, match="api_key"):
         DeepgramNovaSTT(api_key="")
+
+
+def test_provider_id_reflects_model() -> None:
+    from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
+
+    assert DeepgramNovaSTT(api_key="fake").provider_id == "deepgram-nova-3"
+    assert (
+        DeepgramNovaSTT(api_key="fake", model="nova-2").provider_id == "deepgram-nova-2"
+    )
+
+
+async def test_transcribe_uses_configured_model(
+    patched_client: dict[str, object],
+    patched_isinstance: None,
+) -> None:
+    patched_client["conn"] = _FakeConn([])
+
+    from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
+
+    stt = DeepgramNovaSTT(api_key="fake", model="nova-2")
+    async for _ in stt.transcribe("sess-model", _collect([])):
+        pass
+
+    kwargs: dict[str, object] = patched_client["connect_kwargs"]  # type: ignore[assignment]
+    assert kwargs.get("model") == "nova-2"

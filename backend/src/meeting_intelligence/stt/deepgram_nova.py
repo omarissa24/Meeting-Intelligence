@@ -1,13 +1,18 @@
-"""Deepgram Nova-2 streaming implementation of `STTProvider`.
+"""Deepgram Nova streaming implementation of `STTProvider`.
 
 Sits behind the architectural seam established in slice 1: feature code
 never imports the Deepgram SDK directly — it goes through `STTProvider`,
 and `api/deps.py` chooses which concrete implementation to inject.
 
+Defaults to Nova-3, which adds multilingual code-switching (`language=multi`,
+10 languages) and lower streaming WER while keeping speaker diarisation. The
+model is configurable (`Settings.deepgram_model`) so rolling to a newer Nova
+generation is a one-line bump.
+
 Uses deepgram-sdk's listen.v1 streaming WebSocket (the classic real-time
 STT endpoint with diarisation + interim results). The newer listen.v2
-endpoint is a different product — "conversational" with turn detection
-but no diarize/interim flags — so we deliberately target v1 here.
+endpoint is a different product (Flux) — "conversational" with turn
+detection but no diarize/interim flags — so we deliberately target v1 here.
 """
 
 from __future__ import annotations
@@ -30,20 +35,24 @@ log = logging.getLogger("meeting_intelligence.stt.deepgram_nova")
 
 
 class DeepgramNovaSTT(STTProvider):
-    """Streaming STT backed by Deepgram Nova-2.
+    """Streaming STT backed by a Deepgram Nova model (Nova-3 by default).
 
     Connection options are fixed: 16 kHz mono PCM (linear16), diarisation
     on, interim results on, smart_format + punctuate on for legible
-    transcripts. If a deployment needs different settings later, expose
-    them via constructor args — not via globals.
+    transcripts. The model is injectable via the constructor (defaults to
+    "nova-3"); `provider_id` reflects it so telemetry and `SessionStarted`
+    report the active model. If a deployment needs other settings later,
+    expose them via constructor args — not via globals.
     """
 
-    provider_id: str = "deepgram-nova-2"
+    provider_id: str = "deepgram-nova-3"
 
-    def __init__(self, api_key: str) -> None:
+    def __init__(self, api_key: str, model: str = "nova-3") -> None:
         if not api_key:
             raise ValueError("DeepgramNovaSTT requires a non-empty api_key")
         self._client = AsyncDeepgramClient(api_key=api_key)
+        self._model = model
+        self.provider_id = f"deepgram-{model}"
 
     async def transcribe(
         self,
@@ -52,11 +61,11 @@ class DeepgramNovaSTT(STTProvider):
         *,
         language: str | None = None,
     ) -> AsyncIterator[TranscriptEvent]:
-        # `None` and the literal "auto" both mean "let Deepgram auto-detect".
-        # Anything else (e.g. "en", "es") is forwarded as the `language` kwarg
-        # so the model picks an explicit language and skips detection.
+        # `None`/"auto" → "multi" (Nova multilingual code-switching across the
+        # 10 supported languages). An explicit code (e.g. "en", "es") forces
+        # that single language, which is most accurate when it's known.
         connect_kwargs: dict[str, object] = {
-            "model": "nova-2",
+            "model": self._model,
             "encoding": "linear16",
             "sample_rate": 16000,
             "channels": 1,
@@ -64,16 +73,16 @@ class DeepgramNovaSTT(STTProvider):
             "interim_results": True,
             "punctuate": True,
             "smart_format": True,
+            "language": _resolve_language(language),
         }
-        if language is not None and language != "auto":
-            connect_kwargs["language"] = language
         producer_error: list[BaseException] = []
         try:
             async with self._client.listen.v1.connect(**connect_kwargs) as conn:
                 log.info(
-                    "deepgram.connect session_id=%s language=%s",
+                    "deepgram.connect session_id=%s model=%s language=%s",
                     session_id,
-                    language or "auto",
+                    self._model,
+                    connect_kwargs["language"],
                 )
                 producer = asyncio.create_task(
                     _pump_audio(conn, audio_stream, session_id, producer_error)
@@ -116,6 +125,19 @@ class DeepgramNovaSTT(STTProvider):
             raise STTProviderError(
                 f"deepgram send failed: {producer_error[0]}"
             ) from producer_error[0]
+
+
+def _resolve_language(language: str | None) -> str:
+    """Resolve the requested language to a Deepgram `language` value.
+
+    `None` and the literal "auto" both mean "don't pin a language" — for a
+    multilingual model that's `multi` (code-switching). An explicit BCP-47
+    code is returned unchanged so the model runs monolingual for that
+    language, which is the most accurate path when the language is known.
+    """
+    if language and language != "auto":
+        return language
+    return "multi"
 
 
 async def _pump_audio(

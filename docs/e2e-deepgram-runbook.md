@@ -1,7 +1,7 @@
 # Real macOS End-to-End with Deepgram — Runbook
 
 This is the first time the full chain (mac mic + system audio → Tauri →
-backend WS → Deepgram Nova-2 → live transcript) is meant to actually
+backend WS → Deepgram Nova-3 → live transcript) is meant to actually
 run with a real API key. Use this runbook to bring it up, watch the
 telltale log lines, and read the latency numbers honestly.
 
@@ -52,7 +52,7 @@ pnpm replay /tmp/test.wav
 
 Backend (chronological):
 ```
-INFO meeting_intelligence.transcript transcript.ws_open session_id=… provider=deepgram-nova-2
+INFO meeting_intelligence.transcript transcript.ws_open session_id=… provider=deepgram-nova-3
 INFO meeting_intelligence.transcript transcript.session_started session_id=…
 INFO meeting_intelligence.stt.deepgram_nova deepgram.connect session_id=…
 DEBUG meeting_intelligence.transcript transcript.chunk_recv session_id=… seq=0 bytes=32000
@@ -98,7 +98,7 @@ Surfaced via the existing `audio://error` event with `code=AUDIO_DROP`, `recover
 
 ## Microphone gain
 
-macOS defaults the input-volume slider to ~50%, which lands typical speech around -24 dBFS peak — quiet enough that Nova-2 starts dropping words. The pipeline applies a static **+6 dB** boost on the mic path between the downmix and the mixer, which lifts speech to ~-18 dBFS (Deepgram's sweet spot). The boost is logged at session start:
+macOS defaults the input-volume slider to ~50%, which lands typical speech around -24 dBFS peak — quiet enough that Nova-3 starts dropping words. The pipeline applies a static **+6 dB** boost on the mic path between the downmix and the mixer, which lifts speech to ~-18 dBFS (Deepgram's sweet spot). The boost is logged at session start:
 
 ```
 audio/pipeline: mic gain = +6.0 dB (linear ~1.995)

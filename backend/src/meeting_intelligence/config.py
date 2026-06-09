@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # required); "deepgram" routes through DeepgramNovaSTT and requires
     # deepgram_api_key to be set.
     stt_provider: Literal["echo", "deepgram"] = "echo"
+    # Deepgram STT model. Single bump point for the Nova generation (mirrors
+    # `anthropic_model`). nova-2/nova-3 both support multilingual
+    # code-switching via language="multi"; nova-3 is the current default for
+    # its lower streaming WER and 10-language multilingual support.
+    deepgram_model: str = "nova-3"
 
     # LLM selection (Phase 3). "fake" routes through InMemoryFakeLLM
     # (default for dev/CI, no key required); "anthropic" routes through

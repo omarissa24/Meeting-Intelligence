@@ -1,6 +1,6 @@
 """Speech-to-text provider interface.
 
-Implementations: Deepgram Nova-2 (MVP), Faster-Whisper (on-prem).
+Implementations: Deepgram Nova-3 (MVP, multilingual), Faster-Whisper (on-prem).
 """
 
 from abc import ABC, abstractmethod

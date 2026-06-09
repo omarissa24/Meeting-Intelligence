@@ -18,7 +18,7 @@
 
 ## Speech-to-Text
 
-**Deepgram Nova-2** for MVP (streaming WebSocket, speaker diarisation built in). **Faster-Whisper** (self-hosted) for the enterprise on-prem tier. Both sit behind a `STTProvider` interface.
+**Deepgram Nova-3** for MVP (streaming WebSocket, speaker diarisation built in, multilingual code-switching via `language=multi`). **Faster-Whisper** (self-hosted) for the enterprise on-prem tier. Both sit behind a `STTProvider` interface.
 
 ---
 

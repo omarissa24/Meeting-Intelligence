@@ -17,7 +17,7 @@ The repo is in the pre-implementation phase: there is no `src/` or `src-tauri/` 
 - **Desktop shell**: Tauri v2 (Rust) + React 18 + TypeScript + Vite, shadcn/ui + Tailwind, Zustand (local), React Query (server).
 - **Native audio**: ScreenCaptureKit (macOS) / WASAPI (Windows), webrtc-vad, 16kHz mono PCM.
 - **Backend**: Python 3.12 + FastAPI (native WS), Celery, WorkOS auth, Pydantic everywhere.
-- **STT**: Deepgram Nova-2 (MVP) and Faster-Whisper (on-prem), both behind a `STTProvider` interface.
+- **STT**: Deepgram Nova-3 (MVP, multilingual code-switching) and Faster-Whisper (on-prem), both behind a `STTProvider` interface.
 - **LLM/orchestration**: Claude Sonnet via Anthropic Python SDK, LangGraph for the map-reduce pipeline and all future agents.
 - **Data**: Postgres 16 + pgvector, Redis 7 (Celery broker + stream buffer), S3/R2 for audio, Alembic for migrations.
 - **Infra**: Docker Compose locally, Fly.io for MVP, AWS ECS/Fargate + RDS + ElastiCache for prod, GitHub Actions builds backend + signed desktop binaries on release tags.
