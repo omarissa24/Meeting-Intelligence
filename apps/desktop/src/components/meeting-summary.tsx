@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
@@ -472,9 +472,9 @@ function ActionItemRow({
         item.completed && "opacity-70",
       )}
     >
-      <Switch
+      <Checkbox
         checked={item.completed}
-        onCheckedChange={(next) => onPatch({ completed: next })}
+        onCheckedChange={(next) => onPatch({ completed: next === true })}
         aria-label={`Mark "${item.description}" ${item.completed ? "incomplete" : "complete"}`}
         className="mt-0.5"
       />
