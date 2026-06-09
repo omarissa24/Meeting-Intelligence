@@ -10,4 +10,7 @@ export const BACKEND_HTTP_URL = RAW && RAW.length > 0 ? RAW : "http://localhost:
 
 export const BACKEND_WS_URL = BACKEND_HTTP_URL.replace(/^http/, "ws");
 
+/** True in production bundles (`tauri:build`); false under `tauri:dev`. */
+export const IS_PRODUCTION = import.meta.env.PROD;
+
 export const CLIENT_VERSION = "0.0.0-foundation";

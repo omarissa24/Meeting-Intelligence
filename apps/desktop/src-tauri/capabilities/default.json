@@ -12,6 +12,7 @@
     "dialog:allow-save",
     "fs:allow-write-text-file",
     "store:default",
+    "notification:default",
     {
       "identifier": "fs:scope",
       "allow": [

@@ -4,7 +4,11 @@ mod auth;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod recording;
 
-use std::sync::Mutex;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+mod detection;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
@@ -71,6 +75,23 @@ struct RecordingState {
     session: Option<Session>,
 }
 
+/// Shared "is a recording live" flag. `start_recording` / `stop_recording`
+/// flip it; the Phase-6 meeting-detection monitor reads it every poll so it
+/// never prompts while we're already recording (or for our own capture
+/// stream). Kept separate from `RecordingState` so the monitor thread doesn't
+/// contend on the recording mutex.
+#[derive(Clone, Default)]
+struct RecordingActiveFlag(Arc<AtomicBool>);
+
+/// Holds the live meeting-detection monitor while it's running. `None` when
+/// detection is off (logged out, or the user disabled auto-detect). Dropping
+/// the monitor signals its poll thread to stop and joins it.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[derive(Default)]
+struct DetectionMonitorState {
+    monitor: Option<detection::monitor::DetectionMonitor>,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StartRecordingResult {
@@ -121,6 +142,7 @@ impl serde::Serialize for CommandError {
 async fn start_recording<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, Mutex<RecordingState>>,
+    recording_active: State<'_, RecordingActiveFlag>,
     session_id: String,
     options: Option<RecordingOptions>,
 ) -> Result<StartRecordingResult, CommandError> {
@@ -189,6 +211,10 @@ async fn start_recording<R: Runtime>(
         guard.session = Some(session);
     }
 
+    // Tell the meeting-detection monitor (if running) we're live so it
+    // suppresses prompts for the duration of this session.
+    recording_active.0.store(true, Ordering::Relaxed);
+
     Ok(StartRecordingResult {
         session_id,
         started_at: started_at.to_rfc3339(),
@@ -198,7 +224,11 @@ async fn start_recording<R: Runtime>(
 #[tauri::command]
 async fn stop_recording(
     state: State<'_, Mutex<RecordingState>>,
+    recording_active: State<'_, RecordingActiveFlag>,
 ) -> Result<StopRecordingResult, CommandError> {
+    // Detection can resume the moment we leave the live state — clear the flag
+    // up front so even an erroring stop re-enables prompts.
+    recording_active.0.store(false, Ordering::Relaxed);
     // Take the session out of the lock first; stopping it can take
     // up to ~700 ms (drain + join), and we don't want to hold the
     // mutex across that.
@@ -293,6 +323,102 @@ async fn list_audio_inputs() -> Result<Vec<AudioInputDevice>, CommandError> {
     .map_err(|e| CommandError::Audio(format!("join: {e}")))?
 }
 
+// --- Meeting detection (Phase 6) -----------------------------------------
+//
+// Local-only: starts/stops the background monitor that watches for a meeting
+// and emits `meeting://detected` / `meeting://ended`. Policy (logged in +
+// auto-detect setting on) lives in the React layer, which calls start/stop.
+
+/// Start the detection monitor if it isn't already running. Idempotent.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[tauri::command]
+async fn start_detection<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, Mutex<DetectionMonitorState>>,
+    recording_active: State<'_, RecordingActiveFlag>,
+) -> Result<(), CommandError> {
+    let mut guard = state
+        .lock()
+        .map_err(|e| CommandError::StatePoisoned(e.to_string()))?;
+    if guard.monitor.is_some() {
+        return Ok(());
+    }
+    let source = detection::new_source();
+    let monitor = detection::monitor::spawn(app, source, recording_active.0.clone());
+    guard.monitor = Some(monitor);
+    Ok(())
+}
+
+/// Stop the detection monitor and join its poll thread. Idempotent.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[tauri::command]
+async fn stop_detection(
+    state: State<'_, Mutex<DetectionMonitorState>>,
+) -> Result<(), CommandError> {
+    // Take the monitor out under the lock, then drop it outside — its `Drop`
+    // signals the stop channel (which wakes the poll thread's `recv_timeout`
+    // immediately) and joins, so this returns promptly.
+    let monitor = {
+        let mut guard = state
+            .lock()
+            .map_err(|e| CommandError::StatePoisoned(e.to_string()))?;
+        guard.monitor.take()
+    };
+    drop(monitor);
+    Ok(())
+}
+
+/// Apply a user dismissal to the running monitor: `snooze_secs = Some(n)`
+/// snoozes all prompts for `n` seconds; `None` permanently silences `app_id`
+/// for the session ("never for this app"). No-op when detection isn't running.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[tauri::command]
+async fn detection_suppress(
+    state: State<'_, Mutex<DetectionMonitorState>>,
+    app_id: String,
+    snooze_secs: Option<u64>,
+) -> Result<(), CommandError> {
+    let fsm = {
+        let guard = state
+            .lock()
+            .map_err(|e| CommandError::StatePoisoned(e.to_string()))?;
+        guard.monitor.as_ref().map(|m| m.fsm())
+    };
+    if let Some(fsm) = fsm {
+        let mut f = fsm
+            .lock()
+            .map_err(|e| CommandError::StatePoisoned(e.to_string()))?;
+        match snooze_secs {
+            Some(secs) => {
+                f.snooze(std::time::Instant::now() + std::time::Duration::from_secs(secs))
+            }
+            None => f.suppress_app(&app_id),
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[tauri::command]
+async fn start_detection() -> Result<(), CommandError> {
+    Err(CommandError::UnsupportedPlatform)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[tauri::command]
+async fn stop_detection() -> Result<(), CommandError> {
+    Err(CommandError::UnsupportedPlatform)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[tauri::command]
+async fn detection_suppress(
+    _app_id: String,
+    _snooze_secs: Option<u64>,
+) -> Result<(), CommandError> {
+    Err(CommandError::UnsupportedPlatform)
+}
+
 // --- Auth commands -------------------------------------------------------
 //
 // The desktop side of FR-2.01 / FR-2.02. Tokens persist in the OS
@@ -366,8 +492,7 @@ async fn auth_start_login<R: Runtime>(
                 let app_for_loopback = app.clone();
                 let oauth_for_loopback = oauth.inner().clone();
                 tauri::async_runtime::spawn(async move {
-                    auth_loopback::serve_once(app_for_loopback, oauth_for_loopback, listener)
-                        .await;
+                    auth_loopback::serve_once(app_for_loopback, oauth_for_loopback, listener).await;
                 });
             }
             Err(err) => {
@@ -438,8 +563,8 @@ async fn auth_get_access_token() -> Result<Option<String>, AuthCommandError> {
     };
     match refresh_tokens(rt).await {
         Ok(refreshed) => {
-            let user_json = serde_json::to_string(&refreshed.user)
-                .unwrap_or_else(|_| "null".to_string());
+            let user_json =
+                serde_json::to_string(&refreshed.user).unwrap_or_else(|_| "null".to_string());
             let new_stored = StoredSession {
                 access_token: refreshed.access_token.clone(),
                 refresh_token: refreshed.refresh_token.or(Some(rt.clone())),
@@ -465,8 +590,7 @@ async fn auth_get_access_token() -> Result<Option<String>, AuthCommandError> {
 /// clear — best-effort.
 #[tauri::command]
 async fn auth_logout() -> Result<String, AuthCommandError> {
-    auth_storage::clear()
-        .map_err(|e| AuthCommandError::Auth(AuthError::Storage(e.to_string())))?;
+    auth_storage::clear().map_err(|e| AuthCommandError::Auth(AuthError::Storage(e.to_string())))?;
     // Fetch the AuthKit logout URL. If the backend is unreachable
     // we still want the local clear to count, so degrade to an empty
     // URL — the frontend treats that as "no browser hop needed".
@@ -547,10 +671,20 @@ pub fn run() {
         // hydrate/save calls; resolves to a JSON file under the OS
         // app-data dir, so settings survive app updates.
         .plugin(tauri_plugin_store::Builder::new().build())
+        // Phase 6: OS notifications for detected meetings when backgrounded.
+        .plugin(tauri_plugin_notification::init())
         .manage(Mutex::new(RecordingState::default()))
+        .manage(RecordingActiveFlag::default())
         .manage(OAuthState::default())
         .setup(|app| {
             let app_handle = app.handle().clone();
+            // Phase 6: hold the (initially absent) detection monitor. The
+            // React layer spawns it via `start_detection` once the user is
+            // authenticated and auto-detect is on; managed here so the
+            // command can stash the handle. Constructing the platform source
+            // is deferred to `start_detection` (it holds no OS handles).
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
+            app.manage(Mutex::new(DetectionMonitorState::default()));
             // macOS: swap in a custom app menu that frees ⌘H for the in-app
             // "open History" shortcut (US-28). The default menu binds ⌘H to
             // Hide at the AppKit level, swallowing it before the webview can
@@ -581,6 +715,9 @@ pub fn run() {
             check_audio_permissions,
             request_audio_permissions,
             list_audio_inputs,
+            start_detection,
+            stop_detection,
+            detection_suppress,
             auth_start_login,
             auth_get_session,
             auth_get_access_token,
@@ -644,9 +781,7 @@ pub(crate) async fn complete_login<R: Runtime>(
         user_json,
     };
     auth_storage::save(&stored).map_err(|e| AuthError::Storage(e.to_string()))?;
-    let payload = SessionPayload {
-        user: tokens.user,
-    };
+    let payload = SessionPayload { user: tokens.user };
     let _ = app.emit("auth://session-changed", payload);
     Ok(())
 }
@@ -676,8 +811,8 @@ mod tests {
         // Replay rejected — nonce is single-use. This is what
         // protects the loopback-redirect path from re-firing on a
         // hot-reload / browser back-button before the URL is stripped.
-        let err = consume_pending_nonce(&oauth, "nonce-abc")
-            .expect_err("replay should be rejected");
+        let err =
+            consume_pending_nonce(&oauth, "nonce-abc").expect_err("replay should be rejected");
         assert!(matches!(err, AuthError::StateMismatch));
     }
 

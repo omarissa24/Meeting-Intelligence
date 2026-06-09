@@ -416,3 +416,53 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] Token security: OAuth tokens stored in OS credential store; no tokens found in app log files or local storage
 - [ ] Idempotency: clicking `Draft follow-up email` twice for the same meeting does not send two emails; second click opens the previously drafted email
 - [ ] Agent action log: all 5 agent action types (email, calendar, CRM, task, export) logged in `agent_actions` table after each test execution
+
+---
+
+## Phase 6 — Automatic Meeting Detection
+
+> Goal: detect when the user has joined a meeting (Zoom, Teams, Webex, Slack huddle, or Google Meet in a browser) and prompt — "It looks like you're in a meeting — start recording?" — with Start / Dismiss. **Local-only**: no audio, signal, or detection event leaves the device. Accepting runs the existing recording-start flow; it never records silently. Full written spec: `docs/phase-6-meeting-detection.md`.
+
+### User Stories
+
+- [ ] **US-36 — Be prompted to record when a meeting is detected**
+  - [x] Detector fuses "a known conferencing app is running" + "the mic is in use" — a conferencing app with an idle mic does **not** prompt (`apps/desktop/src-tauri/src/detection/`; FSM unit-tested in `monitor.rs`).
+  - [x] Covers Zoom, Teams, Webex, Slack huddles (native) and Google Meet via the browser+mic heuristic (`detection/apps.rs` registry).
+  - [x] Accepting runs the existing `use-recording` `start()` — permission gate, meeting provisioning, WS all reused; no parallel start path (`app-shell.tsx` passes `start` to `<MeetingDetectionPrompt>`).
+  - [x] Never auto-records — the prompt always asks first.
+  - [x] No prompt while a recording is already live (`recording_active` flag read each poll; FSM-tested).
+  - [x] The prompt clears when the call ends (`meeting://ended`, edge-detected; FSM-tested).
+  - [ ] Verified against a real Zoom/Teams/Webex/Slack-huddle and Google-Meet-in-Chrome call — macOS UAT (see DoD).
+- [ ] **US-37 — Get notified when the app is in the background**
+  - [x] When the main window is unfocused, the dock icon bounces (`request_user_attention`, reliable in dev + bundled) and a best-effort OS notification is posted; in-app banner otherwise (Rust `maybe_notify` gates on `is_focused`).
+  - [x] The in-app banner is always mounted from the detected event, so focusing the app (via the bounce or notification) lands the user on exactly one prompt — no double-prompt.
+  - [x] Graceful when notification permission is denied — detection still works, banner-only fallback.
+  - [ ] Background-window notification visually confirmed end-to-end — macOS UAT (see DoD).
+- [ ] **US-38 — Control auto-detection**
+  - [x] On by default; toggle in Settings → "Auto-detect meetings" (`settings-sheet.tsx`, persisted `auto_detect_meetings`).
+  - [x] "Snooze for 1 hour" and "Never for this app" from the prompt overflow (`detection_suppress` → FSM snooze / suppress; unit-tested).
+  - [x] Toggling off stops the monitor thread (`use-meeting-detection.ts` → `stop_detection`).
+  - [x] Detection raises **no** microphone or accessibility permission prompt (NSWorkspace + CoreAudio HAL reads are permission-free).
+
+### Functional Requirements
+
+- [x] **FR-6.01 (Must)** Detection sits behind a `DetectionSource` trait; signal sources are swappable per platform and mockable in tests (`detection/traits.rs`)
+- [x] **FR-6.02 (Must)** Local-only: no audio/signal/detection event leaves the device; no backend or LangGraph involvement (documented in `detection/mod.rs`)
+- [x] **FR-6.03 (Must)** macOS detector: `NSWorkspace.runningApplications` + CoreAudio `kAudioDevicePropertyDeviceIsRunningSomewhere` (`detection/macos/source.rs`)
+- [ ] **FR-6.04 (Should)** Windows detector behind the same trait: ConsentStore registry + `sysinfo` process enum (`detection/windows/source.rs`) — code-complete, awaiting real-hardware UAT (staged like the WASAPI system source)
+- [x] **FR-6.05 (Must)** Fusion rule `(known app OR browser) AND mic_active`; browser case flagged `isBrowserHeuristic` for softer copy (`monitor.rs`)
+- [x] **FR-6.06 (Must)** Single ~4 s poll thread, 2-poll debounce, edge-detected detect/end; one app-enum + one HAL read per tick stays within the ≤8% CPU budget (`monitor.rs`)
+- [x] **FR-6.07 (Must)** Never prompts while recording — reads the shared `recording_active` flag (`lib.rs` start/stop_recording write it)
+- [x] **FR-6.08 (Must)** Accept reuses the existing `use-recording` `start()`; no parallel start path
+- [x] **FR-6.09 (Must)** Context-aware delivery (in-app banner focused / OS notification backgrounded) with no double-prompt
+- [x] **FR-6.10 (Should)** Settings: on-by-default toggle, Snooze 1h, Never-for-app; detection needs no new OS permission
+
+### Definition of Done — Phase 6 Exit Criteria
+
+- [ ] macOS: joining a real Zoom/Teams/Webex/Slack-huddle **and** a Google-Meet-in-Chrome call raises the prompt within ~8 s; Accept records; leaving the call clears the prompt
+- [ ] Detection raises **no** microphone or accessibility permission dialog (verified manually)
+- [ ] Background window → OS notification fires; clicking focuses + shows exactly one banner
+- [ ] Music/video playback does **not** trigger a prompt (output device, not input — the mic gate holds)
+- [ ] Snooze / Never-for-app / Settings-off all suppress as specified; logout and quit tear the monitor thread down with no orphan
+- [x] Rust FSM unit tests (debounce, edge, suppression, snooze, recording-gate, back-to-back) green; frontend detection-store + settings-store tests green
+- [ ] Windows detector verified on real hardware (follow-up, mirroring the WASAPI staging)

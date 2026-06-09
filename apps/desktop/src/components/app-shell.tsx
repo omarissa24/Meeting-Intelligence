@@ -6,6 +6,7 @@ import { ConnectionStatus } from "@/components/connection-status";
 import { HistoryView } from "@/components/history-view";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { MeetingDetailView } from "@/components/meeting-detail-view";
+import { MeetingDetectionPrompt } from "@/components/meeting-detection-prompt";
 import { PermissionPrompt } from "@/components/permission-prompt";
 import { ReconnectBanner } from "@/components/reconnect-banner";
 import { RecordControl } from "@/components/record-control";
@@ -14,8 +15,10 @@ import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
 import { Button } from "@/components/ui/button";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useMeetingDetection } from "@/hooks/use-meeting-detection";
 import { useRecording } from "@/hooks/use-recording";
 import { canBrowseHistory } from "@/lib/recording-phase";
+import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 
 export function AppShell() {
@@ -33,6 +36,14 @@ export function AppShell() {
   // navigation store. start/stop are passed by identity; the hook ref's
   // them so the listener installs once.
   useKeyboardShortcuts({ start, stop });
+
+  // Phase 6: run the meeting detector while authenticated + opted in. Gated on
+  // `hydrated` so we read the user's real setting (not the default) before
+  // spawning the monitor. Mounted here so logout (AppShell unmount) tears it
+  // down.
+  const autoDetectMeetings = useSettingsStore((s) => s.autoDetectMeetings);
+  const settingsHydrated = useSettingsStore((s) => s.hydrated);
+  useMeetingDetection(settingsHydrated && autoDetectMeetings);
 
   // Treat `stopping` and `stopped` as one rendering branch — the user
   // perceives "I clicked Stop" as instantaneous; the SessionEndedView
@@ -166,6 +177,12 @@ export function AppShell() {
           void handlePermissionRequest();
         }}
         pending={phase === "requesting-permissions"}
+      />
+
+      <MeetingDetectionPrompt
+        onStart={() => {
+          void start();
+        }}
       />
 
       <KeyboardShortcutsDialog />
