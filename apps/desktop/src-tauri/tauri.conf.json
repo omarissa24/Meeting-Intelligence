@@ -47,7 +47,7 @@
       }
     },
     "updater": {
-      "pubkey": "REPLACE_WITH_TAURI_SIGNER_PUBKEY",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNGMUUyOTg4REQ5QjM3OApSV1I0czltTm1PTHhBL200ZVNOTEVuek80SnFYWm9ieG5JRVhSSzV0NkZ2QWYvdGNXR2E5SVNXbgo=",
       "endpoints": [
         "https://meeting-intelligence-api.fly.dev/updates/{{target}}/{{arch}}/{{current_version}}"
       ]
