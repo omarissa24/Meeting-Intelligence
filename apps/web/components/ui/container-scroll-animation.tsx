@@ -56,7 +56,10 @@ export function ContainerScroll({
 function Header({ translate, children }: { translate: MotionValue<number>; children: ReactNode }) {
   return (
     <motion.div style={{ translateY: translate }} className="mx-auto max-w-2xl text-center">
-      {children}
+      {/* Wrapped in a plain element (mirrors Card below) so the app's ReactNode
+          isn't passed straight into motion.div's children — sidesteps the
+          duplicated @types/react skew in the workspace. */}
+      <div>{children}</div>
     </motion.div>
   );
 }
