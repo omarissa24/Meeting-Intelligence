@@ -6,7 +6,10 @@ import type { ReleaseInfo } from "@/lib/releases";
 
 export function Hero({ release }: { release: ReleaseInfo }) {
   return (
-    <section className="relative mx-auto flex min-h-dvh w-full max-w-5xl flex-col items-center justify-center px-6 pt-28 pb-28 text-center">
+    <section
+      id="top"
+      className="relative mx-auto flex min-h-dvh w-full max-w-5xl flex-col items-center justify-center px-6 pt-28 pb-28 text-center"
+    >
       <span className="text-eyebrow animate-rise-in">Meeting intelligence</span>
 
       <AnimatedHeadline />

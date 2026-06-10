@@ -79,7 +79,7 @@ function FeatureCard({
 
 export function Features() {
   return (
-    <section id="features" className="mx-auto w-full max-w-5xl px-6 py-20 sm:py-28">
+    <section id="features" className="mx-auto w-full max-w-5xl scroll-mt-20 px-6 py-20 sm:py-28">
       <div className="mx-auto max-w-2xl text-center">
         <span className="text-eyebrow">What it does</span>
         <h2 className="mt-4 font-display text-3xl font-normal tracking-tight sm:text-4xl">

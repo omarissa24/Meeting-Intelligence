@@ -62,6 +62,6 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
-          releaseName: "Meeting Intelligence ${{ github.ref_name }}"
+          releaseName: "marens ${{ github.ref_name }}"
           releaseDraft: true
           prerelease: false

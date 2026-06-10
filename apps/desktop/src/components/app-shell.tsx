@@ -23,6 +23,8 @@ import { canBrowseHistory } from "@/lib/recording-phase";
 import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
+import logo from "@/assets/marens-logo.png";
+import logoDark from "@/assets/marens-logo-dark.png";
 
 export function AppShell() {
   const { phase, elapsedMs, error, permissionState, start, stop, requestPermissions } =
@@ -110,15 +112,11 @@ export function AppShell() {
   return (
     <div className="flex h-screen flex-col bg-background app-atmosphere text-foreground">
       <header className="flex items-center justify-between px-8 py-5">
-        <div className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="size-2 rounded-full bg-accent shadow-[0_0_0_3px_color-mix(in_oklch,var(--accent)_22%,transparent)]"
-          />
-          <h1 className="font-display text-2xl font-normal leading-none tracking-tight">
-            Meeting Intelligence
-          </h1>
-        </div>
+        <h1 className="flex items-center leading-none">
+          {/* marens logo (mark + wordmark) — theme-aware. */}
+          <img src={logo} alt="marens" className="h-8 w-auto dark:hidden" />
+          <img src={logoDark} alt="marens" className="hidden h-8 w-auto dark:block" />
+        </h1>
         <div className="flex items-center gap-1">
           {historyBrowsable && view === "recording" ? (
             <Button

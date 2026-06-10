@@ -4,6 +4,10 @@ import { Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth-store";
+import logo from "@/assets/marens-logo.png";
+import logoDark from "@/assets/marens-logo-dark.png";
+import wordmark from "@/assets/marens-wordmark.png";
+import wordmarkDark from "@/assets/marens-wordmark-dark.png";
 
 /**
  * Phase-2 login gate. Single primary action — `Sign in` opens the
@@ -29,13 +33,16 @@ export function LoginView() {
   }, [errorMessage]);
 
   return (
-    <div className="flex h-screen flex-col items-center overflow-y-auto bg-background app-atmosphere px-8 py-8 text-foreground">
-      <div className="my-auto flex w-full max-w-sm animate-rise-in flex-col items-stretch gap-8 text-center">
+    <div className="relative flex h-screen flex-col items-center overflow-y-auto bg-background app-atmosphere px-8 py-8 text-foreground">
+      {/* Brand lockup — centered in the space above the sign-in card so it has
+          equal breathing room above and below. */}
+      <div className="flex flex-1 items-center">
+        <img src={logo} alt="marens" className="h-9 w-auto dark:hidden" />
+        <img src={logoDark} alt="marens" className="hidden h-9 w-auto dark:block" />
+      </div>
+
+      <div className="flex w-full max-w-sm animate-rise-in flex-col items-stretch gap-8 text-center">
         <div className="flex flex-col gap-3">
-          <span className="inline-flex items-center justify-center gap-2 text-eyebrow">
-            <span aria-hidden className="size-1.5 rounded-full bg-accent" />
-            Meeting Intelligence
-          </span>
           <h1 className="font-display text-4xl font-normal leading-tight tracking-tight">
             Sign in to continue
           </h1>
@@ -71,6 +78,21 @@ export function LoginView() {
           </p>
         ) : null}
       </div>
+
+      {/* Mirror the top region so the sign-in card stays vertically centered. */}
+      <div className="flex-1" aria-hidden />
+
+      {/* Wordmark signature, bottom left. */}
+      <img
+        src={wordmark}
+        alt="marens"
+        className="absolute bottom-8 left-8 h-4 w-auto opacity-80 dark:hidden"
+      />
+      <img
+        src={wordmarkDark}
+        alt="marens"
+        className="absolute bottom-8 left-8 hidden h-4 w-auto opacity-80 dark:block"
+      />
     </div>
   );
 }

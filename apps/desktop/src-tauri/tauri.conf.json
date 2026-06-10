@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Meeting Intelligence",
+  "productName": "marens",
   "version": "0.0.0",
   "identifier": "com.meeting-intelligence.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Meeting Intelligence",
+        "title": "marens",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
