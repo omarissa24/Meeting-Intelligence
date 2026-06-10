@@ -13,10 +13,12 @@ import { cn } from "@/lib/utils";
  * Phase 4 / US-23 history filter toolbar.
  *
  * Controlled component — parent owns the filter state and passes
- * `onChange` to receive committed filter values. The toolbar is a
- * single inline row of summary chips by default; clicking the filter
- * button opens a popover with the editable inputs (date range,
- * duration min/max in minutes, tag chip multi-select).
+ * `onChange` to receive committed filter values. `HistoryFilters` is
+ * just the trigger button + popover (date range, duration min/max in
+ * minutes, tag chip multi-select) so the parent can place it inline
+ * with the search input; the removable summary chips live in the
+ * sibling `ActiveFilterChips`, rendered by the parent only when a
+ * filter is active so inactive state costs no vertical space.
  *
  * Design system: only semantic tokens (`text-muted-foreground`,
  * `bg-muted/40`, `--ring`). Reuses the chip visual from the editable
@@ -38,155 +40,165 @@ export function HistoryFilters({ filters, onChange, meetings }: HistoryFiltersPr
   const isActive = !isEmpty(filters);
 
   return (
-    <div className="flex items-center gap-2 px-6 py-3 border-b">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button type="button" variant={isActive ? "default" : "outline"} size="sm">
-            <Filter className="size-3.5" aria-hidden />
-            Filters
-            {isActive ? (
-              <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] font-normal">
-                {summary.length}
-              </Badge>
-            ) : null}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-80 gap-4 p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-date-start" className="text-xs">
-                From
-              </Label>
-              <Input
-                id="filter-date-start"
-                type="date"
-                value={filters.dateStart ?? ""}
-                onChange={(e) => onChange({ ...filters, dateStart: e.target.value || null })}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-date-end" className="text-xs">
-                To
-              </Label>
-              <Input
-                id="filter-date-end"
-                type="date"
-                value={filters.dateEnd ?? ""}
-                onChange={(e) => onChange({ ...filters, dateEnd: e.target.value || null })}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-dur-min" className="text-xs">
-                Min minutes
-              </Label>
-              <Input
-                id="filter-dur-min"
-                type="number"
-                min={0}
-                placeholder="0"
-                value={
-                  filters.durationMinSeconds != null
-                    ? String(Math.round(filters.durationMinSeconds / 60))
-                    : ""
-                }
-                onChange={(e) =>
-                  onChange({
-                    ...filters,
-                    durationMinSeconds: parseMinutesToSeconds(e.target.value),
-                  })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="filter-dur-max" className="text-xs">
-                Max minutes
-              </Label>
-              <Input
-                id="filter-dur-max"
-                type="number"
-                min={0}
-                placeholder="∞"
-                value={
-                  filters.durationMaxSeconds != null
-                    ? String(Math.round(filters.durationMaxSeconds / 60))
-                    : ""
-                }
-                onChange={(e) =>
-                  onChange({
-                    ...filters,
-                    durationMaxSeconds: parseMinutesToSeconds(e.target.value),
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          {tagOptions.length > 0 ? (
-            <div className="flex flex-col gap-1.5">
-              <Label className="text-xs">Tags</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {tagOptions.map((tag) => {
-                  const selected = (filters.tags ?? []).includes(tag);
-                  return (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => onChange(toggleTag(filters, tag))}
-                      className={cn(
-                        "rounded-md transition-base",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      )}
-                      aria-pressed={selected}
-                    >
-                      <Badge
-                        variant={selected ? "default" : "secondary"}
-                        className={cn("font-normal", !selected && "opacity-70")}
-                      >
-                        {tag}
-                      </Badge>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button type="button" variant={isActive ? "default" : "outline"} size="sm">
+          <Filter className="size-3.5" aria-hidden />
+          Filters
+          {isActive ? (
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-[10px] font-normal">
+              {summary.length}
+            </Badge>
           ) : null}
-
-          <div className="flex items-center justify-between pt-2 border-t -mx-4 px-4 -mb-4 pb-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => onChange({})}
-              disabled={!isActive}
-            >
-              Clear all
-            </Button>
-            <Button type="button" size="sm" onClick={() => setOpen(false)}>
-              Done
-            </Button>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80 gap-4 p-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-date-start" className="text-xs">
+              From
+            </Label>
+            <Input
+              id="filter-date-start"
+              type="date"
+              value={filters.dateStart ?? ""}
+              onChange={(e) => onChange({ ...filters, dateStart: e.target.value || null })}
+            />
           </div>
-        </PopoverContent>
-      </Popover>
-
-      {isActive ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {summary.map((chip) => (
-            <button
-              key={chip.key}
-              type="button"
-              onClick={() => onChange(chip.clear(filters))}
-              className="group inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5 text-xs transition-fast hover:bg-muted"
-              aria-label={`Remove ${chip.label} filter`}
-            >
-              <span>{chip.label}</span>
-              <X className="size-3 text-muted-foreground group-hover:text-foreground" aria-hidden />
-            </button>
-          ))}
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-date-end" className="text-xs">
+              To
+            </Label>
+            <Input
+              id="filter-date-end"
+              type="date"
+              value={filters.dateEnd ?? ""}
+              onChange={(e) => onChange({ ...filters, dateEnd: e.target.value || null })}
+            />
+          </div>
         </div>
-      ) : null}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-dur-min" className="text-xs">
+              Min minutes
+            </Label>
+            <Input
+              id="filter-dur-min"
+              type="number"
+              min={0}
+              placeholder="0"
+              value={
+                filters.durationMinSeconds != null
+                  ? String(Math.round(filters.durationMinSeconds / 60))
+                  : ""
+              }
+              onChange={(e) =>
+                onChange({
+                  ...filters,
+                  durationMinSeconds: parseMinutesToSeconds(e.target.value),
+                })
+              }
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="filter-dur-max" className="text-xs">
+              Max minutes
+            </Label>
+            <Input
+              id="filter-dur-max"
+              type="number"
+              min={0}
+              placeholder="∞"
+              value={
+                filters.durationMaxSeconds != null
+                  ? String(Math.round(filters.durationMaxSeconds / 60))
+                  : ""
+              }
+              onChange={(e) =>
+                onChange({
+                  ...filters,
+                  durationMaxSeconds: parseMinutesToSeconds(e.target.value),
+                })
+              }
+            />
+          </div>
+        </div>
+
+        {tagOptions.length > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Tags</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {tagOptions.map((tag) => {
+                const selected = (filters.tags ?? []).includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => onChange(toggleTag(filters, tag))}
+                    className={cn(
+                      "rounded-md transition-base",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    )}
+                    aria-pressed={selected}
+                  >
+                    <Badge
+                      variant={selected ? "default" : "secondary"}
+                      className={cn("font-normal", !selected && "opacity-70")}
+                    >
+                      {tag}
+                    </Badge>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="flex items-center justify-between pt-2 border-t -mx-4 px-4 -mb-4 pb-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onChange({})}
+            disabled={!isActive}
+          >
+            Clear all
+          </Button>
+          <Button type="button" size="sm" onClick={() => setOpen(false)}>
+            Done
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * Removable chips for the currently-active filters. Renders nothing
+ * when no filter is set — the parent decides where the chips row lives.
+ */
+export function ActiveFilterChips({
+  filters,
+  onChange,
+}: Pick<HistoryFiltersProps, "filters" | "onChange">) {
+  const summary = describeFilters(filters);
+  if (summary.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {summary.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          onClick={() => onChange(chip.clear(filters))}
+          className="group inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5 text-xs transition-fast hover:bg-muted"
+          aria-label={`Remove ${chip.label} filter`}
+        >
+          <span>{chip.label}</span>
+          <X className="size-3 text-muted-foreground group-hover:text-foreground" aria-hidden />
+        </button>
+      ))}
     </div>
   );
 }

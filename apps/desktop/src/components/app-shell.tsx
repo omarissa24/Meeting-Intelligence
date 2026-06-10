@@ -8,6 +8,7 @@ import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog"
 import { MeetingDetailView } from "@/components/meeting-detail-view";
 import { MeetingDetectionPrompt } from "@/components/meeting-detection-prompt";
 import { PermissionPrompt } from "@/components/permission-prompt";
+import { RecentMeetings } from "@/components/recent-meetings";
 import { ReconnectBanner } from "@/components/reconnect-banner";
 import { RecordControl } from "@/components/record-control";
 import { SessionEndedView } from "@/components/session-ended-view";
@@ -17,7 +18,9 @@ import { Button } from "@/components/ui/button";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useMeetingDetection } from "@/hooks/use-meeting-detection";
 import { useRecording } from "@/hooks/use-recording";
+import { CLIENT_VERSION, IS_PRODUCTION } from "@/lib/config";
 import { canBrowseHistory } from "@/lib/recording-phase";
+import { cn } from "@/lib/utils";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
 
@@ -135,22 +138,35 @@ export function AppShell() {
       <main className="flex flex-1 flex-col overflow-hidden px-8 pb-6">
         <div key={view} className="flex min-h-0 flex-1 animate-rise-in flex-col gap-6">
           {view === "recording" ? (
-            <>
-              {!isSessionEnded ? (
-                <section className="flex justify-center py-6">
+            isSessionEnded ? (
+              <>
+                <ReconnectBanner onRetry={handleRetry} />
+                <section className="min-h-0 flex-1">
+                  <SessionEndedView />
+                </section>
+              </>
+            ) : (
+              // Keyed on home-vs-live so the swap between the hero/recent
+              // surface and the in-session transcript rises in as one unit.
+              <div
+                key={historyBrowsable ? "home" : "live"}
+                className="flex min-h-0 flex-1 animate-rise-in flex-col gap-6"
+              >
+                <section className={cn("flex justify-center", historyBrowsable ? "py-10" : "py-6")}>
                   <RecordControl
+                    variant={historyBrowsable ? "hero" : "compact"}
                     phase={phase}
                     elapsedMs={elapsedMs}
                     onStart={handleStart}
                     onStop={handleStop}
                   />
                 </section>
-              ) : null}
-              <ReconnectBanner onRetry={handleRetry} />
-              <section className="min-h-0 flex-1">
-                {isSessionEnded ? <SessionEndedView /> : <TranscriptPanel />}
-              </section>
-            </>
+                <ReconnectBanner onRetry={handleRetry} />
+                <section className="min-h-0 flex-1">
+                  {historyBrowsable ? <RecentMeetings /> : <TranscriptPanel />}
+                </section>
+              </div>
+            )
           ) : view === "history" ? (
             <section className="min-h-0 flex-1">
               <HistoryView />
@@ -164,8 +180,10 @@ export function AppShell() {
       </main>
 
       <footer className="flex items-center justify-between gap-4 border-t border-border px-8 py-3 text-xs">
+        {/* Pipeline diagnostics are for debugging the audio chain — dev
+            builds only. Production shows the app version instead. */}
         <span className="text-muted-foreground">
-          16 kHz mono PCM · 1 s payloads · in-memory echo
+          {IS_PRODUCTION ? `v${CLIENT_VERSION}` : "16 kHz mono PCM · 1 s payloads · in-memory echo"}
         </span>
         <ConnectionStatus />
       </footer>

@@ -20,6 +20,7 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 import { MeetingDetailView } from "./meeting-detail-view";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const MEETING_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -55,7 +56,13 @@ function renderWithQuery(ui: React.ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  // TooltipProvider mirrors App.tsx — the audio transport and the
+  // delete-audio action render inside Tooltips.
+  return render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{ui}</TooltipProvider>
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {

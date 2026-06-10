@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import type { MicLevelPayload } from "@/lib/audio-bridge";
 
@@ -53,14 +53,27 @@ describe("MicLevelMeter", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows both the To-STT and Mic bars while recording", async () => {
+  it("shows a single Mic bar while recording", async () => {
     setRecording("s1");
     render(<MicLevelMeter />);
     await act(async () => {}); // flush the async subscribe
 
-    expect(screen.getByText("To STT")).toBeTruthy();
     expect(screen.getByText("Mic")).toBeTruthy();
-    expect(screen.getAllByRole("meter")).toHaveLength(2);
+    expect(screen.getAllByRole("meter")).toHaveLength(1);
+  });
+
+  it("reveals both raw dBFS readouts in the info popover", async () => {
+    setRecording("s1");
+    render(<MicLevelMeter />);
+    await act(async () => {});
+    pushLevel({ micRawDbfs: -37, micResampledDbfs: -33 });
+
+    fireEvent.click(screen.getByRole("button", { name: /input level details/i }));
+
+    expect(await screen.findByText("Mic (raw)")).toBeTruthy();
+    expect(screen.getByText("To STT (resampled)")).toBeTruthy();
+    expect(screen.getByText("-37 dBFS")).toBeTruthy();
+    expect(screen.getByText("-33 dBFS")).toBeTruthy();
   });
 
   it("colors the fill with the good band at a healthy level", async () => {
@@ -69,8 +82,8 @@ describe("MicLevelMeter", () => {
     await act(async () => {});
     pushLevel({ micRawDbfs: -12, micResampledDbfs: -10 });
 
-    const firstFill = screen.getAllByRole("meter")[0].querySelector("[data-band]");
-    expect(firstFill?.getAttribute("data-band")).toBe("good");
+    const fill = screen.getByRole("meter").querySelector("[data-band]");
+    expect(fill?.getAttribute("data-band")).toBe("good");
   });
 
   it("surfaces the low-input hint when the signal is near-floor", async () => {

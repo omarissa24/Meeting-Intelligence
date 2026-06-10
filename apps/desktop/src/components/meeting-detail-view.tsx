@@ -19,6 +19,7 @@ import { useSummariseMeeting } from "@/hooks/use-summarise-meeting";
 import { useUpdateMeeting } from "@/hooks/use-update-meeting";
 import { formatRelativeDate, formatTime } from "@/lib/format-date";
 import { formatDuration } from "@/lib/format-duration";
+import { displayMeetingTitle } from "@/lib/meeting-title";
 import { displaySpeakerLabel } from "@/lib/speaker-label";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/stores/ui-store";
@@ -42,8 +43,6 @@ interface MeetingDetailViewProps {
 const MAX_TITLE_LENGTH = 200;
 const MAX_TAG_LENGTH = 32;
 const MAX_TAGS = 10;
-
-const FALLBACK_TITLE = "Untitled meeting";
 
 /**
  * Read-mostly meeting detail. Title and tags are inline-editable
@@ -218,6 +217,10 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
     const m = query.data;
     return {
       title: m.title,
+      // Display-only derived title ("Meeting — Jun 5, 16:01") for
+      // untitled meetings; editing always starts from the raw value so
+      // the fallback is never committed.
+      fallbackTitle: displayMeetingTitle({ title: m.title, startedAt: m.startedAt }).title,
       date: formatRelativeDate(m.startedAt),
       time: formatTime(m.startedAt),
       duration: m.durationSeconds != null ? formatDuration(m.durationSeconds * 1000) : "—",
@@ -244,6 +247,7 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
               <EditableTitle
                 key={`${meetingId}:${headerMeta.title ?? ""}`}
                 value={headerMeta.title}
+                fallback={headerMeta.fallbackTitle}
                 onCommit={(next) => {
                   // Empty trimmed string is a no-op — see plan note on
                   // null vs "" disambiguation. We also skip the PATCH
@@ -353,9 +357,12 @@ export function MeetingDetailView({ meetingId }: MeetingDetailViewProps) {
  */
 function EditableTitle({
   value,
+  fallback,
   onCommit,
 }: {
   value: string | null;
+  /** Display-only stand-in when there's no real title (never committed). */
+  fallback: string;
   onCommit: (next: string | null) => void;
 }) {
   const initial = value ?? "";
@@ -369,7 +376,7 @@ function EditableTitle({
   }, [initial, editing]);
 
   const tooLong = draft.length > MAX_TITLE_LENGTH;
-  const display = (value ?? "").trim() || FALLBACK_TITLE;
+  const display = (value ?? "").trim() || fallback;
   const isFallback = !(value ?? "").trim();
 
   const beginEdit = () => {
@@ -412,7 +419,9 @@ function EditableTitle({
         type="button"
         onClick={beginEdit}
         className={cn(
-          "block w-full max-w-full truncate rounded-md text-left text-title",
+          // Display scale — this is the page's H1; text-title made it
+          // read like just another section label.
+          "block w-full max-w-full truncate rounded-md text-left text-display",
           "-mx-1 px-1 py-0.5",
           "transition-base hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
           isFallback ? "text-muted-foreground" : "text-foreground",
@@ -435,7 +444,8 @@ function EditableTitle({
         onKeyDown={onKeyDown}
         aria-label="Meeting title"
         aria-invalid={tooLong || undefined}
-        className={cn("h-9 text-title", "bg-transparent")}
+        // Match the read-mode display scale so the edit swap doesn't jump.
+        className={cn("h-11 text-display", "bg-transparent")}
         maxLength={MAX_TITLE_LENGTH + 50}
       />
       {tooLong ? (

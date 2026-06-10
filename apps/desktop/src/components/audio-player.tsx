@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -26,6 +27,12 @@ interface AudioPlayerProps {
    * back to `meeting.durationSeconds` for the readout and seek range.
    */
   fallbackDurationSeconds?: number | null;
+  /**
+   * Optional slot rendered at the end of the transport row — e.g. the
+   * quiet delete-audio action — so callers don't need a second row of
+   * chrome under the player.
+   */
+  trailing?: React.ReactNode;
 }
 
 /**
@@ -39,7 +46,7 @@ interface AudioPlayerProps {
  * presigned URL, so a URL refresh or meeting switch remounts the player
  * and resets all playback state.
  */
-export function AudioPlayer({ src, fallbackDurationSeconds }: AudioPlayerProps) {
+export function AudioPlayer({ src, fallbackDurationSeconds, trailing }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   // Read inside the timeupdate listener, which is attached once on mount —
   // a ref avoids the stale-closure trap a state value would hit there.
@@ -154,85 +161,89 @@ export function AudioPlayer({ src, fallbackDurationSeconds }: AudioPlayerProps) 
       {hasError ? (
         <p className="text-sm text-muted-foreground">Couldn&apos;t play this audio.</p>
       ) : (
-        <>
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              size="icon"
-              onClick={togglePlay}
-              aria-label={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? (
-                <Pause className="size-4" aria-hidden />
-              ) : (
-                <Play className="size-4" aria-hidden />
-              )}
-            </Button>
+        // One transport row — play, skip, scrub, time, speed, trailing
+        // actions. The old three-row stack fragmented a single mental
+        // unit ("the player") across the section.
+        <div className="flex items-center gap-3">
+          <Button
+            type="button"
+            size="icon"
+            onClick={togglePlay}
+            aria-label={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? (
+              <Pause className="size-4" aria-hidden />
+            ) : (
+              <Play className="size-4" aria-hidden />
+            )}
+          </Button>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => skip(-SKIP_SECONDS)}
-                  disabled={!isReady}
-                  aria-label="Skip back 15 seconds"
-                >
-                  <RotateCcw className="size-4" aria-hidden />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Back 15s</TooltipContent>
-            </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => skip(-SKIP_SECONDS)}
+                disabled={!isReady}
+                aria-label="Skip back 15 seconds"
+              >
+                <RotateCcw className="size-4" aria-hidden />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back 15s</TooltipContent>
+          </Tooltip>
 
-            <Slider
-              className="flex-1"
-              min={0}
-              max={effectiveDuration || 1}
-              step={1}
-              value={[Math.min(currentTime, effectiveDuration || currentTime)]}
-              onValueChange={onSeekChange}
-              onValueCommit={onSeekCommit}
-              disabled={!isReady && effectiveDuration === 0}
-              aria-label="Seek"
-              aria-valuetext={formatClock(currentTime)}
-            />
+          <Slider
+            className="flex-1"
+            min={0}
+            max={effectiveDuration || 1}
+            step={1}
+            value={[Math.min(currentTime, effectiveDuration || currentTime)]}
+            onValueChange={onSeekChange}
+            onValueCommit={onSeekCommit}
+            disabled={!isReady && effectiveDuration === 0}
+            aria-label="Seek"
+            aria-valuetext={formatClock(currentTime)}
+          />
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => skip(SKIP_SECONDS)}
-                  disabled={!isReady}
-                  aria-label="Skip forward 15 seconds"
-                >
-                  <RotateCw className="size-4" aria-hidden />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Forward 15s</TooltipContent>
-            </Tooltip>
-          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => skip(SKIP_SECONDS)}
+                disabled={!isReady}
+                aria-label="Skip forward 15 seconds"
+              >
+                <RotateCw className="size-4" aria-hidden />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Forward 15s</TooltipContent>
+          </Tooltip>
 
-          <div className="flex items-center justify-between">
-            <span className="font-mono text-xs text-muted-foreground tabular-nums">
-              {formatClock(currentTime)} / {formatClock(effectiveDuration)}
-            </span>
-            <Select value={String(playbackRate)} onValueChange={onSpeedChange}>
-              <SelectTrigger size="sm" aria-label="Playback speed" className="w-fit">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
+          <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+            {formatClock(currentTime)} / {formatClock(effectiveDuration)}
+          </span>
+
+          <Select value={String(playbackRate)} onValueChange={onSpeedChange}>
+            <SelectTrigger size="sm" aria-label="Playback speed" className="w-fit">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
                 {PLAYBACK_RATES.map((rate) => (
                   <SelectItem key={rate} value={String(rate)}>
                     {rate}x
                   </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+
+          {trailing}
+        </div>
       )}
     </div>
   );

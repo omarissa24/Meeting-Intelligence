@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
+import { Info } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { subscribeMicLevel, type MicLevelPayload } from "@/lib/audio-bridge";
 import {
   dbfsToWidthPct,
@@ -14,10 +17,13 @@ import { useRecordingStore } from "@/stores/recording-store";
 /**
  * Live microphone level meter (US-25a). Self-contained: reads the
  * recording phase + session id from the store and renders only while a
- * session is actively recording. Subscribes to `audio://level` (~10 Hz)
- * and shows two bars — the post-gain level the STT actually consumes
- * and the raw device-side level — so the user can judge input health
- * independent of the pipeline's static gain compensation.
+ * session is actively recording.
+ *
+ * The user-facing surface is ONE bar — the raw device level, since
+ * that's the thing the low-input hint tells them to adjust in System
+ * Settings. The pipeline-side resampled level (what the STT actually
+ * consumes) stays available for debugging via the info popover, along
+ * with both raw dBFS readouts. `levelHint` still weighs both signals.
  */
 
 /** Resting state between sessions / before the first tick lands. */
@@ -38,7 +44,7 @@ function LevelBar({ label, dbfs }: { label: string; dbfs: number }) {
   const width = dbfsToWidthPct(dbfs);
   return (
     <div className="flex items-center gap-2">
-      <span className="w-10 shrink-0 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+      <span className="shrink-0 text-[0.625rem] font-medium uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </span>
       <div
@@ -47,7 +53,7 @@ function LevelBar({ label, dbfs }: { label: string; dbfs: number }) {
         aria-valuenow={Math.round(dbfs)}
         aria-valuemin={-60}
         aria-valuemax={0}
-        className="relative h-1.5 w-28 overflow-hidden rounded-full bg-input"
+        className="relative h-1.5 w-40 overflow-hidden rounded-full bg-input"
       >
         <div
           data-band={band}
@@ -58,11 +64,12 @@ function LevelBar({ label, dbfs }: { label: string; dbfs: number }) {
           style={{ width: `${width}%` }}
         />
       </div>
-      <span className="w-9 shrink-0 text-right text-[0.625rem] tabular-nums text-muted-foreground">
-        {dbfs <= NEAR_FLOOR_DBFS ? "—" : Math.round(dbfs)}
-      </span>
     </div>
   );
+}
+
+function formatDbfs(dbfs: number): string {
+  return dbfs <= NEAR_FLOOR_DBFS ? "—" : `${Math.round(dbfs)} dBFS`;
 }
 
 export function MicLevelMeter() {
@@ -99,18 +106,33 @@ export function MicLevelMeter() {
   const hint = levelHint(level.micRawDbfs, level.micResampledDbfs);
 
   return (
-    <div className="relative flex flex-col gap-1.5" aria-label="Microphone level">
-      <LevelBar label="To STT" dbfs={level.micResampledDbfs} />
-      <LevelBar label="Mic" dbfs={level.micRawDbfs} />
-      {/* Floated out of flow so the low-input hint never grows the meter
-          column. In flow it pushed the record button up and the transcript
-          down the moment it appeared; absolute keeps the row height fixed
-          and lets the hint render into the section's padding below. */}
-      {hint ? (
-        <p className="absolute top-full left-0 mt-1 max-w-[14rem] text-[0.625rem] leading-tight text-muted-foreground">
-          {hint}
-        </p>
-      ) : null}
+    <div className="flex flex-col gap-1" aria-label="Microphone level">
+      <div className="flex items-center gap-1">
+        <LevelBar label="Mic" dbfs={level.micRawDbfs} />
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Input level details">
+              <Info />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-auto">
+            <dl className="flex flex-col gap-1.5 font-mono text-xs tabular-nums">
+              <div className="flex items-center justify-between gap-6">
+                <dt className="text-muted-foreground">Mic (raw)</dt>
+                <dd>{formatDbfs(level.micRawDbfs)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-6">
+                <dt className="text-muted-foreground">To STT (resampled)</dt>
+                <dd>{formatDbfs(level.micResampledDbfs)}</dd>
+              </div>
+            </dl>
+          </PopoverContent>
+        </Popover>
+      </div>
+      {/* Reserved in-flow slot — the hint appearing/disappearing must not
+          shift the recording header (it used to be absolutely positioned
+          and overlapped the content below). */}
+      <p className="min-h-8 max-w-[18rem] text-xs leading-tight text-meter-warn">{hint ?? ""}</p>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import {
   AlertCircle,
   ArrowDownToLine,
   Copy,
+  Ellipsis,
   Loader2,
   Pencil,
   RefreshCw,
@@ -29,10 +30,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
@@ -178,16 +187,7 @@ export function MeetingSummary({
           {summary.topics.length === 0 ? (
             <EmptyLine>No topics recorded.</EmptyLine>
           ) : (
-            <ul className="flex flex-col gap-1 text-sm text-foreground">
-              {summary.topics.map((t, idx) => (
-                <li key={idx} className="flex items-baseline gap-2">
-                  <span>{t.name}</span>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {formatTopicDuration(t)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <TopicList topics={summary.topics} />
           )}
         </Section>
       </div>
@@ -245,6 +245,36 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return <p className="text-sm italic text-muted-foreground">{children}</p>;
+}
+
+/**
+ * Topic list with a proportional duration bar per topic — scaled to the
+ * longest topic (reads better than share-of-total when one topic
+ * dominates). Semantic tokens only: muted track, soft accent fill.
+ */
+function TopicList({ topics }: { topics: Topic[] }) {
+  const maxDuration = Math.max(...topics.map((t) => t.durationSeconds), 1);
+
+  return (
+    <ul className="flex flex-col gap-2 text-sm text-foreground">
+      {topics.map((t, idx) => (
+        <li key={idx} className="flex flex-col gap-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="min-w-0 truncate">{t.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+              {formatTopicDuration(t)}
+            </span>
+          </div>
+          <div aria-hidden className="h-1 w-full rounded-full bg-muted/60">
+            <div
+              className="h-full rounded-full bg-accent/40"
+              style={{ width: `${(Math.max(0, t.durationSeconds) / maxDuration) * 100}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function LoadingCard() {
@@ -332,52 +362,59 @@ function ButtonRow({
     }
   };
 
+  // Two quiet icon actions for the frequent operations, everything else
+  // behind the overflow menu — four labelled text buttons crowded the
+  // header and "Action items" read as navigation rather than copy.
   return (
-    <div className="flex flex-wrap items-center gap-1">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={handleCopySummary}
-        aria-label="Copy summary"
-      >
-        <Copy data-icon="inline-start" className="size-4" />
-        Copy
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={handleCopyActionItems}
-        aria-label="Copy action items"
-      >
-        <Copy data-icon="inline-start" className="size-4" />
-        Action items
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={handleExport}
-        aria-label="Export as text"
-      >
-        <ArrowDownToLine data-icon="inline-start" className="size-4" />
-        Export
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={onRegenerateRequested}
-        disabled={isRegenerating}
-        aria-label="Regenerate summary"
-      >
-        <RefreshCw
-          data-icon="inline-start"
-          className={cn("size-4", isRegenerating && "animate-spin")}
-        />
-        Regenerate
-      </Button>
+    <div className="flex items-center gap-0.5">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={handleCopySummary}
+            aria-label="Copy summary"
+          >
+            <Copy aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Copy summary</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onRegenerateRequested}
+            disabled={isRegenerating}
+            aria-label="Regenerate summary"
+          >
+            <RefreshCw aria-hidden className={cn(isRegenerating && "animate-spin")} />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Regenerate summary</TooltipContent>
+      </Tooltip>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="More summary actions">
+            <Ellipsis aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44">
+          <DropdownMenuGroup>
+            <DropdownMenuItem onSelect={() => void handleCopyActionItems()}>
+              <Copy aria-hidden />
+              Copy action items
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void handleExport()}>
+              <ArrowDownToLine aria-hidden />
+              Export as text
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
@@ -468,7 +505,7 @@ function ActionItemRow({
     <li
       key={itemKey}
       className={cn(
-        "flex items-start gap-3 rounded-lg border bg-muted/30 px-3 py-2.5 transition-fast",
+        "group/action flex items-start gap-3 rounded-lg border bg-muted/30 px-3 py-2.5 transition-fast",
         item.completed && "opacity-70",
       )}
     >
@@ -544,16 +581,22 @@ function ActionItemRow({
                 size="icon-sm"
                 onClick={beginEdit}
                 aria-label={`Edit "${item.description}"`}
-                className="-mr-1 -mt-1"
+                className="-mr-1 -mt-1 opacity-0 transition-fast group-hover/action:opacity-100 focus-visible:opacity-100"
               >
                 <Pencil className="size-3.5" aria-hidden />
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              <span>{item.owner ?? "Unassigned"}</span>
-              <span className="px-1">·</span>
-              <span>{item.deadline ?? "No deadline set"}</span>
-            </p>
+            {/* "Unassigned · No deadline set" on every untouched row was
+                pure noise — show the meta line only once there's a real
+                owner and/or deadline to report. Edit mode still exposes
+                both fields. */}
+            {item.owner || item.deadline ? (
+              <p className="text-xs text-muted-foreground">
+                {item.owner ? <span>{item.owner}</span> : null}
+                {item.owner && item.deadline ? <span className="px-1">·</span> : null}
+                {item.deadline ? <span>{item.deadline}</span> : null}
+              </p>
+            ) : null}
           </>
         )}
       </div>

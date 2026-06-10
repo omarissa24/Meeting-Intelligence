@@ -1,18 +1,27 @@
 import { describe, expect, it } from "vitest";
 
-import { formatRelativeDate, formatTime } from "./format-date";
+import { formatDayKey, formatRelativeDate, formatTime } from "./format-date";
+
+// Relative-day words now come from Intl.RelativeTimeFormat (locale-driven,
+// so "Today"/"Yesterday" can't end up English next to a French absolute
+// date). Compute the expected words the same way so the assertions hold
+// regardless of the test runner's locale (en-US under jsdom/CI).
+const relativeDay = (daysAgo: number) => {
+  const word = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(-daysAgo, "day");
+  return word.charAt(0).toLocaleUpperCase() + word.slice(1);
+};
 
 describe("formatRelativeDate", () => {
   const reference = new Date(2026, 5, 3, 12, 0, 0); // 2026-06-03 local
 
-  it("returns Today for a same-day timestamp", () => {
+  it("returns the locale's 'today' word for a same-day timestamp", () => {
     const sameDay = new Date(2026, 5, 3, 8, 30, 0);
-    expect(formatRelativeDate(sameDay.toISOString(), reference)).toBe("Today");
+    expect(formatRelativeDate(sameDay.toISOString(), reference)).toBe(relativeDay(0));
   });
 
-  it("returns Yesterday for the prior day", () => {
+  it("returns the locale's 'yesterday' word for the prior day", () => {
     const yesterday = new Date(2026, 5, 2, 23, 0, 0);
-    expect(formatRelativeDate(yesterday.toISOString(), reference)).toBe("Yesterday");
+    expect(formatRelativeDate(yesterday.toISOString(), reference)).toBe(relativeDay(1));
   });
 
   it("renders an abbreviated weekday for last week", () => {
@@ -40,6 +49,24 @@ describe("formatRelativeDate", () => {
     expect(formatRelativeDate(null)).toBe("—");
     expect(formatRelativeDate(undefined)).toBe("—");
     expect(formatRelativeDate("not a date")).toBe("—");
+  });
+});
+
+describe("formatDayKey", () => {
+  it("returns a local YYYY-MM-DD key", () => {
+    expect(formatDayKey(new Date(2026, 5, 3, 8, 30, 0).toISOString())).toBe("2026-06-03");
+  });
+
+  it("groups timestamps from the same local day under one key", () => {
+    const morning = new Date(2026, 5, 3, 0, 5, 0);
+    const night = new Date(2026, 5, 3, 23, 55, 0);
+    expect(formatDayKey(morning.toISOString())).toBe(formatDayKey(night.toISOString()));
+  });
+
+  it("returns null for null / unparseable input", () => {
+    expect(formatDayKey(null)).toBeNull();
+    expect(formatDayKey(undefined)).toBeNull();
+    expect(formatDayKey("not a date")).toBeNull();
   });
 });
 

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, History as HistoryIcon, Mic, Users } from "lucide-react";
+import { ArrowLeft, History as HistoryIcon, Mic } from "lucide-react";
 import type { Meeting, MeetingFilters } from "@meeting-intelligence/shared-types";
 
-import { HistoryFilters } from "@/components/history-filters";
+import { ActiveFilterChips, HistoryFilters } from "@/components/history-filters";
+import { ListSkeleton, MeetingRow } from "@/components/meeting-row";
 import { SearchInput, type SearchInputHandle } from "@/components/search-input";
 import { SearchResults } from "@/components/search-results";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -16,12 +16,9 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useMeetingsList } from "@/hooks/use-meetings-list";
 import { useSearch } from "@/hooks/use-search";
-import { formatRelativeDate, formatTime } from "@/lib/format-date";
-import { formatDuration } from "@/lib/format-duration";
-import { cn } from "@/lib/utils";
+import { formatDayKey, formatRelativeDate } from "@/lib/format-date";
 import { useUiStore } from "@/stores/ui-store";
 
 /**
@@ -69,6 +66,10 @@ export function HistoryView() {
     [listQuery.data],
   );
 
+  // Day groups derive from the flat paginated array every render, so
+  // "Load more" extends existing groups / appends new ones for free.
+  const dayGroups = useMemo(() => groupByDay(meetings), [meetings]);
+
   const isSearching = query.trim().length > 0;
 
   return (
@@ -93,11 +94,13 @@ export function HistoryView() {
         ) : null}
       </header>
 
-      <div className="flex flex-col gap-2 px-6 pt-3">
-        <SearchInput ref={searchRef} value={query} onSubmit={setQuery} />
+      <div className="flex flex-col gap-2 border-b px-6 py-3">
+        <div className="flex items-center gap-2">
+          <SearchInput ref={searchRef} className="flex-1" value={query} onSubmit={setQuery} />
+          <HistoryFilters filters={filters} onChange={setFilters} meetings={meetings} />
+        </div>
+        <ActiveFilterChips filters={filters} onChange={setFilters} />
       </div>
-
-      <HistoryFilters filters={filters} onChange={setFilters} meetings={meetings} />
 
       <CardContent className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
         {isSearching ? (
@@ -120,13 +123,23 @@ export function HistoryView() {
         ) : (
           <>
             <ScrollArea type="auto" className="min-h-0 flex-1">
-              <ol className="flex flex-col">
-                {meetings.map((m) => (
-                  <li key={m.id}>
-                    <MeetingRow meeting={m} onOpen={() => openMeeting(m.id)} />
-                  </li>
-                ))}
-              </ol>
+              {dayGroups.map((group) => (
+                <section key={group.key} aria-label={group.label}>
+                  {/* Sticky day header — `sticky` makes it positioned, so
+                      it paints above the static rows without manual
+                      z-index; opaque bg-card stops row bleed-through. */}
+                  <h3 className="sticky top-0 border-b bg-card px-6 py-1.5 text-eyebrow">
+                    {group.label}
+                  </h3>
+                  <ol className="flex flex-col">
+                    {group.meetings.map((m) => (
+                      <li key={m.id}>
+                        <MeetingRow meeting={m} onOpen={() => openMeeting(m.id)} />
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ))}
             </ScrollArea>
             {listQuery.hasNextPage ? (
               <div className="flex items-center justify-center border-t px-6 py-3">
@@ -148,74 +161,41 @@ export function HistoryView() {
   );
 }
 
-function MeetingRow({ meeting, onOpen }: { meeting: Meeting; onOpen: () => void }) {
-  const title = meeting.title?.trim() || "Untitled meeting";
-  const duration =
-    meeting.durationSeconds != null ? formatDuration(meeting.durationSeconds * 1000) : "—";
-  const speakerCount = meeting.speakerCount ?? 0;
-  const status = meeting.status;
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={cn(
-        "group flex w-full items-start gap-4 border-b px-6 py-4 text-left transition-base",
-        "hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
-      )}
-    >
-      <div className="flex flex-1 flex-col gap-1.5 min-w-0">
-        <div className="flex items-baseline gap-2">
-          <h3 className="truncate font-display text-base font-normal tracking-tight text-foreground">
-            {title}
-          </h3>
-          {status !== "completed" ? (
-            <Badge variant="outline" className="shrink-0 text-[10px] uppercase tracking-wide">
-              {status}
-            </Badge>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span>{formatRelativeDate(meeting.startedAt)}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">{formatTime(meeting.startedAt)}</span>
-          <span aria-hidden>·</span>
-          <span className="tabular-nums">{duration}</span>
-          {speakerCount > 0 ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="inline-flex items-center gap-1">
-                <Users className="size-3" aria-hidden />
-                {speakerCount}
-              </span>
-            </>
-          ) : null}
-        </div>
-        {meeting.tags.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5 pt-1">
-            {meeting.tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="font-normal">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
-      </div>
-    </button>
-  );
+interface DayGroup {
+  key: string;
+  label: string;
+  meetings: Meeting[];
 }
 
-function ListSkeleton() {
-  return (
-    <div className="flex flex-col">
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} className="flex flex-col gap-2 border-b px-6 py-4">
-          <Skeleton className="h-5 w-1/2" />
-          <Skeleton className="h-3 w-1/3" />
-        </div>
-      ))}
-    </div>
-  );
+/**
+ * Bucket a server-ordered (newest-first) flat list into per-day groups,
+ * preserving order. Meetings without a parseable `startedAt` collect in
+ * a trailing "Undated" group rather than crashing the headers.
+ */
+function groupByDay(meetings: Meeting[]): DayGroup[] {
+  const groups: DayGroup[] = [];
+  const byKey = new Map<string, DayGroup>();
+  const undated: Meeting[] = [];
+
+  for (const m of meetings) {
+    const key = formatDayKey(m.startedAt);
+    if (!key) {
+      undated.push(m);
+      continue;
+    }
+    let group = byKey.get(key);
+    if (!group) {
+      group = { key, label: formatRelativeDate(m.startedAt), meetings: [] };
+      byKey.set(key, group);
+      groups.push(group);
+    }
+    group.meetings.push(m);
+  }
+
+  if (undated.length > 0) {
+    groups.push({ key: "undated", label: "Undated", meetings: undated });
+  }
+  return groups;
 }
 
 function EmptyState() {

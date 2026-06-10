@@ -7,6 +7,7 @@ vi.mock("@/lib/api-client", () => ({
 }));
 
 import { MeetingSummary as MeetingSummaryView } from "./meeting-summary";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 const MEETING_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -59,15 +60,19 @@ function renderView(opts: {
   onPatchActionItem?: (id: string, body: object) => void;
 }) {
   const noop = () => undefined;
+  // TooltipProvider mirrors App.tsx — the header icon actions render
+  // inside Tooltips.
   return render(
-    <MeetingSummaryView
-      meetingId={MEETING_ID}
-      status={opts.status ?? "completed"}
-      summary={opts.summary ?? makeSummary()}
-      isRegenerating={opts.isRegenerating ?? false}
-      onRegenerate={opts.onRegenerate ?? noop}
-      onPatchActionItem={opts.onPatchActionItem ?? noop}
-    />,
+    <TooltipProvider>
+      <MeetingSummaryView
+        meetingId={MEETING_ID}
+        status={opts.status ?? "completed"}
+        summary={opts.summary ?? makeSummary()}
+        isRegenerating={opts.isRegenerating ?? false}
+        onRegenerate={opts.onRegenerate ?? noop}
+        onPatchActionItem={opts.onPatchActionItem ?? noop}
+      />
+    </TooltipProvider>,
   );
 }
 
@@ -84,9 +89,7 @@ describe("MeetingSummary — state machine", () => {
 
   it("renders the too-short message", () => {
     renderView({ status: "too_short", summary: null });
-    expect(
-      screen.getByText(/Recording too short to summarise/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Recording too short to summarise/)).toBeInTheDocument();
   });
 
   it("renders the failed message with a Retry button", () => {
@@ -113,13 +116,32 @@ describe("MeetingSummary — state machine", () => {
     expect(screen.getByText("12m 00s")).toBeInTheDocument();
   });
 
+  it("hides the owner/deadline meta line when both are unset", () => {
+    renderView({});
+    // ai-1 has a real owner + deadline → meta shown.
+    expect(screen.getByText("Omar")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-15")).toBeInTheDocument();
+    // ai-2 has neither → no "Unassigned · No deadline set" noise.
+    expect(screen.queryByText(/Unassigned/)).toBeNull();
+    expect(screen.queryByText(/No deadline set/)).toBeNull();
+  });
+
+  it("offers copy-action-items and export in the overflow menu", async () => {
+    renderView({});
+    // Radix menu triggers open on keyboard activation (pointer events
+    // need a real pointerdown sequence jsdom doesn't synthesise well).
+    fireEvent.keyDown(screen.getByRole("button", { name: /more summary actions/i }), {
+      key: "Enter",
+    });
+    expect(await screen.findByText("Copy action items")).toBeInTheDocument();
+    expect(screen.getByText("Export as text")).toBeInTheDocument();
+  });
+
   it("surfaces the confidence-low footnote when flagged", () => {
     renderView({
       summary: makeSummary({ confidenceLow: true }),
     });
-    expect(
-      screen.getByText(/Speaker diarisation was uncertain/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Speaker diarisation was uncertain/)).toBeInTheDocument();
   });
 
   it("renders empty-state copy for sections with no entries", () => {
@@ -140,9 +162,9 @@ describe("MeetingSummary — action item interactions", () => {
   it("toggling completion calls onPatchActionItem with completed=true", () => {
     const onPatch = vi.fn();
     renderView({ onPatchActionItem: onPatch });
-    const switches = screen.getAllByRole("switch");
-    expect(switches).toHaveLength(2);
-    fireEvent.click(switches[0]);
+    const checkboxes = screen.getAllByRole("checkbox");
+    expect(checkboxes).toHaveLength(2);
+    fireEvent.click(checkboxes[0]);
     expect(onPatch).toHaveBeenCalledWith("ai-1", { completed: true });
   });
 

@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDeleteMeetingAudio } from "@/hooks/use-delete-meeting-audio";
 import { useMeetingAudio } from "@/hooks/use-meeting-audio";
 
@@ -115,16 +116,12 @@ function ReadyState({ meeting }: { meeting: MeetingDetail }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <AudioPlayer
-        key={audio.data.audioUrl}
-        src={audio.data.audioUrl}
-        fallbackDurationSeconds={meeting.durationSeconds}
-      />
-      <div className="flex justify-end">
-        <DeleteAudioButton meetingId={meeting.id} />
-      </div>
-    </div>
+    <AudioPlayer
+      key={audio.data.audioUrl}
+      src={audio.data.audioUrl}
+      fallbackDurationSeconds={meeting.durationSeconds}
+      trailing={<DeleteAudioButton meetingId={meeting.id} />}
+    />
   );
 }
 
@@ -148,16 +145,21 @@ function DeleteAudioButton({ meetingId }: { meetingId: string }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpen(true)}
-        className="text-muted-foreground hover:text-foreground"
-      >
-        <Trash2 className="size-4" aria-hidden />
-        Delete audio
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setOpen(true)}
+            aria-label="Delete audio"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Trash2 aria-hidden />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Delete audio</TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Delete audio archive?</DialogTitle>

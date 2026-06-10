@@ -14,6 +14,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { speakerLabel } from "@/lib/speaker-label";
 import { cn } from "@/lib/utils";
+import { useRecordingStore } from "@/stores/recording-store";
 import { SYSTEM_SPEAKER_ID, useTranscriptStore } from "@/stores/transcript-store";
 
 // If the user is reading older context, don't snap them back to the
@@ -91,6 +92,27 @@ function TranscriptItem({ line }: { line: TranscriptLine }) {
 }
 
 function EmptyView() {
+  const phase = useRecordingStore((s) => s.phase);
+  const listening = phase === "starting" || phase === "recording";
+
+  // Mid-session the old copy ("Press record to start a session") was
+  // plainly wrong — the user already pressed record. Show a live
+  // "Listening…" state instead; the pre-session copy stays as a
+  // defensive fallback (the panel no longer mounts on the idle home).
+  if (listening) {
+    return (
+      <Empty className="h-full">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <span aria-hidden className="size-2 animate-breathe rounded-full bg-recording" />
+          </EmptyMedia>
+          <EmptyTitle className="text-title">Listening…</EmptyTitle>
+          <EmptyDescription>Live transcript appears here as people speak.</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    );
+  }
+
   return (
     <Empty className="h-full">
       <EmptyHeader>

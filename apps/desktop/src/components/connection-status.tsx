@@ -14,6 +14,10 @@ export function ConnectionStatus() {
     return () => window.clearInterval(id);
   }, [phase.kind]);
 
+  // No session → no socket → nothing to report. The old "Offline" label
+  // read as an error state while the app was simply idle.
+  if (phase.kind === "idle") return null;
+
   const { dot, label } = (() => {
     switch (phase.kind) {
       case "open":
@@ -21,8 +25,7 @@ export function ConnectionStatus() {
       case "connecting":
         return {
           dot: "bg-muted-foreground/60 animate-pulse",
-          label:
-            phase.attempt === 0 ? "Connecting" : `Connecting (attempt ${phase.attempt + 1})`,
+          label: phase.attempt === 0 ? "Connecting" : `Connecting (attempt ${phase.attempt + 1})`,
         } as const;
       case "reconnecting": {
         const remaining = Math.max(0, Math.ceil((phase.nextRetryAtMs - now) / 1000));
@@ -32,10 +35,8 @@ export function ConnectionStatus() {
         } as const;
       }
       case "failed":
-        return { dot: "bg-destructive", label: "Disconnected" } as const;
-      case "idle":
       default:
-        return { dot: "bg-muted-foreground/30", label: "Offline" } as const;
+        return { dot: "bg-destructive", label: "Disconnected" } as const;
     }
   })();
 

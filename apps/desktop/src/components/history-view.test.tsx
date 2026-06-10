@@ -74,7 +74,7 @@ describe("HistoryView", () => {
     expect(screen.getByText("1:1 with Ada")).toBeInTheDocument();
   });
 
-  it("falls back to 'Untitled meeting' for blank titles", async () => {
+  it("derives a date-based display title for blank titles", async () => {
     mockApiJson.mockResolvedValueOnce({
       items: [sampleMeeting({ id: "c", title: null })],
       nextCursor: null,
@@ -82,7 +82,49 @@ describe("HistoryView", () => {
 
     renderWithQuery(<HistoryView />);
 
+    // Same Intl options as displayMeetingTitle so the assertion holds in
+    // any runner locale.
+    const stamp = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date("2026-06-03T15:00:00Z"));
+    expect(await screen.findByText(`Meeting — ${stamp}`)).toBeInTheDocument();
+  });
+
+  it("falls back to 'Untitled meeting' when there is no title and no start time", async () => {
+    mockApiJson.mockResolvedValueOnce({
+      items: [sampleMeeting({ id: "d", title: null, startedAt: null })],
+      nextCursor: null,
+    } as MeetingListResponse);
+
+    renderWithQuery(<HistoryView />);
+
     expect(await screen.findByText(/Untitled meeting/i)).toBeInTheDocument();
+  });
+
+  it("groups meetings from different days under separate day headers", async () => {
+    mockApiJson.mockResolvedValueOnce({
+      items: [
+        sampleMeeting({ id: "a", title: "Same day A", startedAt: "2026-06-03T15:00:00Z" }),
+        sampleMeeting({ id: "b", title: "Same day B", startedAt: "2026-06-03T09:00:00Z" }),
+        sampleMeeting({ id: "c", title: "Earlier day", startedAt: "2025-01-10T09:00:00Z" }),
+      ],
+      nextCursor: null,
+    } as MeetingListResponse);
+
+    renderWithQuery(<HistoryView />);
+    await screen.findByText("Same day A");
+
+    // Two distinct calendar days → exactly two grouped sections.
+    const headers = document.querySelectorAll("section > h3");
+    expect(headers).toHaveLength(2);
+    // The two same-day meetings share the first section.
+    const firstSection = headers[0].closest("section");
+    expect(firstSection?.textContent).toContain("Same day A");
+    expect(firstSection?.textContent).toContain("Same day B");
+    expect(firstSection?.textContent).not.toContain("Earlier day");
   });
 
   it("clicking a row calls openMeeting", async () => {
