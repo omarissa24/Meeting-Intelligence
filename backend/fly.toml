@@ -51,7 +51,7 @@ primary_region = "iad"
   # Desktop auto-update manifest source (GET /updates/...). Set to this
   # repo's owner/name before enabling deploys.
   UPDATES_PROVIDER = "github"
-  UPDATES_GITHUB_REPO = "REPLACE_WITH_OWNER/REPO"
+  UPDATES_GITHUB_REPO = "omarissa24/Meeting-Intelligence"
   # Tauri v2 webview origins (macOS / Windows). The /updates endpoint is
   # polled from Rust, so CORS never applies to it.
   CORS_ALLOW_ORIGINS = '["tauri://localhost","https://tauri.localhost"]'
