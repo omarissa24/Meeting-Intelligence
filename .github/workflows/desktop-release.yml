@@ -76,6 +76,15 @@ jobs:
       # by tauri-action.
       - uses: tauri-apps/tauri-action@v0
         env:
+          # Baked into the bundle at build time: the Vite build runs as a
+          # child of tauri-action (beforeBuildCommand: `pnpm build`) and
+          # inlines `import.meta.env.VITE_BACKEND_URL`. Without this the
+          # shipped app falls back to http://localhost:8000 (see
+          # apps/desktop/src/lib/config.ts) and the release is dead on
+          # arrival. Overridable via the VITE_BACKEND_URL repo variable;
+          # the literal default is the production Fly backend so an unset
+          # variable can't silently brick the release.
+          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL || 'https://meeting-intelligence-api.fly.dev' }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
