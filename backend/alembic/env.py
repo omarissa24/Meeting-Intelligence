@@ -23,9 +23,15 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 settings = get_settings()
-db_url = settings.database_url
+# Prefer MIGRATION_DATABASE_URL when set: migrations need the owner role
+# (DDL, CREATE EXTENSION, GRANT), while the running app connects as the
+# least-privilege app_user via DATABASE_URL. Falls back to DATABASE_URL
+# in dev/compose where one role does both.
+db_url = settings.migration_database_url or settings.database_url
 if not db_url:
-    raise RuntimeError("DATABASE_URL must be set to run alembic")
+    raise RuntimeError(
+        "DATABASE_URL (or MIGRATION_DATABASE_URL) must be set to run alembic"
+    )
 config.set_main_option("sqlalchemy.url", db_url)
 
 target_metadata = Base.metadata

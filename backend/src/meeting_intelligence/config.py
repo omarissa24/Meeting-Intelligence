@@ -29,6 +29,12 @@ class Settings(BaseSettings):
 
     # Data
     database_url: str | None = None
+    # Optional. When set, Alembic (the Fly release_command) connects with
+    # this URL instead of `database_url`. This lets the app + worker run as
+    # the least-privilege `app_user` role (DATABASE_URL) while schema
+    # migrations run as the table-owning role (MIGRATION_DATABASE_URL).
+    # Unset in dev/compose, where one role runs both.
+    migration_database_url: str | None = None
     redis_url: str | None = None
 
     # Object storage (S3 / R2)
