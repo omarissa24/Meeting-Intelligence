@@ -73,7 +73,17 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    command: ["uv", "run", "celery", "-A", "meeting_intelligence.worker.celery_app", "worker", "-l", "info"]
+    command:
+      [
+        "uv",
+        "run",
+        "celery",
+        "-A",
+        "meeting_intelligence.worker.celery_app",
+        "worker",
+        "-l",
+        "info",
+      ]
     env_file:
       - path: ../backend/.env
         required: false
@@ -83,6 +93,33 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Flower — Celery monitoring UI (Phase 2 DoD line 160). Dev-only by
+  # default; production adds a Fly process group behind auth if ops
+  # needs it (see docs/release-runbook.md). Basic auth defaults to
+  # admin:admin locally — override FLOWER_BASIC_AUTH in infra/.env.
+  flower:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command:
+      [
+        "uv",
+        "run",
+        "celery",
+        "-A",
+        "meeting_intelligence.worker.celery_app",
+        "flower",
+        "--port=5555",
+        "--basic-auth=${FLOWER_BASIC_AUTH:-admin:admin}",
+      ]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    depends_on:
       redis:
         condition: service_healthy
 

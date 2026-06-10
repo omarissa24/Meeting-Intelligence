@@ -6,6 +6,7 @@ to drive `Base.metadata.create_all` against the ephemeral DB.
 """
 
 from meeting_intelligence.db.models.action_item import ActionItem
+from meeting_intelligence.db.models.dead_letter_task import DeadLetterTask
 from meeting_intelligence.db.models.meeting import Meeting
 from meeting_intelligence.db.models.meeting_summary import MeetingSummary
 from meeting_intelligence.db.models.speaker_alias import SpeakerAlias
@@ -14,6 +15,7 @@ from meeting_intelligence.db.models.user import User
 
 __all__ = [
     "ActionItem",
+    "DeadLetterTask",
     "Meeting",
     "MeetingSummary",
     "SpeakerAlias",

@@ -33,6 +33,10 @@ dependencies = [
     # Admin CLI (`uv run mi backfill-embeddings`). Lightweight wrapper
     # over Click; we use it only for ops commands, not for the API.
     "typer>=0.12.0,<1",
+    # Phase 2 DoD line 160: Celery worker monitoring. Main deps (not dev)
+    # because the Docker image installs --no-dev and the compose `flower`
+    # service runs from that image.
+    "flower>=2.0,<3",
 ]
 
 [project.scripts]
@@ -56,6 +60,8 @@ dev = [
     "ruff>=0.7.0",
     "mypy>=1.13.0",
     "pytest-postgresql>=6.1.0,<7",
+    # Latency benchmarks (tests/benchmarks/, `-m perf`).
+    "pytest-benchmark>=4.0.0,<6",
     # S3 mocking for storage + audio-archive task tests.
     "moto[s3]>=5.0.0,<6",
 ]
@@ -71,8 +77,13 @@ pythonpath = ["src"]
 # relevant API key env var is unset.
 markers = [
     "e2e: real external-service tests; require API keys (skipped by default)",
+    # `perf` (not `benchmark` — pytest-benchmark already owns that marker
+    # name for per-test config) gates the seeded-DB latency benchmarks in
+    # tests/benchmarks/. They seed hundreds of meetings, so they're
+    # opt-in: TEST_DATABASE_URL=... pytest -m perf
+    "perf: seeded-DB latency benchmarks (Phase 2/4 DoD); excluded by default",
 ]
-addopts = "-m 'not e2e'"
+addopts = "-m 'not e2e and not perf'"
 
 [tool.ruff]
 line-length = 100

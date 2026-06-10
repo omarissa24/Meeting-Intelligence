@@ -1,0 +1,67 @@
+# Fly.io MVP deploy (docs/tech-stack.md: "Fly.io for MVP"). One app, two
+# process groups: the API and the Celery worker — uvicorn alone never
+# archives audio / summarises / embeds (see docs/release-runbook.md for
+# one-time setup: app creation, managed Postgres + Redis, secrets).
+#
+# Secrets (DATABASE_URL, REDIS_URL, DEEPGRAM/ANTHROPIC/OPENAI keys,
+# WORKOS_*, S3_*) are set via `fly secrets set` — never here. The [env]
+# block is non-secret config only.
+
+app = "meeting-intelligence-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[deploy]
+  # Migrations run as a separate, observable release step (the image's
+  # entrypoint deliberately does NOT auto-migrate outside compose dev).
+  release_command = "alembic upgrade head"
+
+[processes]
+  app = "uvicorn meeting_intelligence.main:app --host 0.0.0.0 --port 8000"
+  worker = "celery -A meeting_intelligence.worker.celery_app worker -l info"
+
+[http_service]
+  internal_port = 8000
+  # FR-2.13: Fly's edge terminates TLS (1.2/1.3) and force_https
+  # redirects any plain-HTTP request — the "server rejects non-TLS" DoD.
+  force_https = true
+  # Live transcript WebSockets must not be reaped mid-meeting; never
+  # let Fly stop the machines under an open stream.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+[env]
+  ENVIRONMENT = "production"
+  LOG_LEVEL = "INFO"
+  OBJECT_STORAGE_BACKEND = "s3"
+  STT_PROVIDER = "deepgram"
+  LLM_PROVIDER = "anthropic"
+  EMBEDDING_PROVIDER = "openai"
+  # Desktop auto-update manifest source (GET /updates/...). Set to this
+  # repo's owner/name before enabling deploys.
+  UPDATES_PROVIDER = "github"
+  UPDATES_GITHUB_REPO = "REPLACE_WITH_OWNER/REPO"
+  # Tauri v2 webview origins (macOS / Windows). The /updates endpoint is
+  # polled from Rust, so CORS never applies to it.
+  CORS_ALLOW_ORIGINS = '["tauri://localhost","https://tauri.localhost"]'
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"   # ffmpeg encode of long meetings needs headroom
+  processes = ["worker"]

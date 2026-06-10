@@ -60,6 +60,10 @@ class S3ObjectStorage(ObjectStorageProvider):
                 Key=key,
                 Body=data,
                 ContentType=content_type,
+                # US-13: encrypted at rest (AES-256). SSE-S3 — works on
+                # AWS and R2; bucket-level default encryption is belt and
+                # braces, this header is the in-repo guarantee.
+                ServerSideEncryption="AES256",
             )
         log.info("storage.s3.put bucket=%s key=%s bytes=%d", self._bucket, key, len(data))
         return f"s3://{self._bucket}/{key}"
@@ -118,7 +122,14 @@ def s3_put_sync(
         aws_access_key_id=access_key_id,
         aws_secret_access_key=secret_access_key,
     )
-    client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
+    client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=data,
+        ContentType=content_type,
+        # Mirror the async path: encrypted at rest (US-13).
+        ServerSideEncryption="AES256",
+    )
 
 
 # `aioboto3`'s s3 GET stream uses `async with`, but mypy can't infer the

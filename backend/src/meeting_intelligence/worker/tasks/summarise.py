@@ -46,6 +46,7 @@ from meeting_intelligence.db.rls import set_request_user
 from meeting_intelligence.summary import SummaryResult, summarise_transcript
 from meeting_intelligence.summary.graph import SummariserLLM
 from meeting_intelligence.worker.celery_app import celery_app
+from meeting_intelligence.worker.dead_letter import record_dead_letter
 
 log = logging.getLogger("meeting_intelligence.worker.summarise")
 
@@ -426,14 +427,24 @@ def summarise_meeting(
         )
         try:
             raise self.retry(exc=exc, countdown=30)  # type: ignore[attr-defined]
-        except MaxRetriesExceededError:
+        except Retry:
+            raise
+        # NB: when `exc=` is passed, Celery re-raises *that* exception
+        # (not MaxRetriesExceededError) once retries are exhausted —
+        # both arms mean "retries exhausted, dead-letter it".
+        except (MaxRetriesExceededError, SummariseRetryable):
             log.error(
                 "summarise.dead_letter meeting_id=%s reason=%s",
                 meeting_id,
                 exc,
             )
-            raise
-        except Retry:
+            record_dead_letter(
+                task_name="meeting_intelligence.summarise_meeting",
+                task_id=getattr(getattr(self, "request", None), "id", None),
+                args=None,
+                kwargs={"meeting_id": meeting_id, "user_id": user_id},
+                error=str(exc),
+            )
             raise
 
 

@@ -7,14 +7,13 @@ app — Celery's `task_always_eager` flag in tests bypasses the broker
 entirely, so the URL stub is fine.
 
 DoD line 160 ("Celery worker monitored via Flower; failed tasks retry
-up to 3 times before dead-lettering") is satisfied at the policy level
-here: `task_acks_late=True` so a worker crash mid-task re-queues the
-task, and per-task `max_retries=3` with `retry_backoff` is set on the
-specific task decorators rather than globally (so heavyweight one-off
-tasks can opt out).
-
-Flower wiring is a separate compose-only concern and lands in the
-infra slice.
+up to 3 times before dead-lettering"): `task_acks_late=True` so a worker
+crash mid-task re-queues the task; per-task `max_retries=3` is set on
+the specific task decorators rather than globally (so heavyweight
+one-off tasks can opt out); and on `MaxRetriesExceededError` each task
+calls `worker.dead_letter.record_dead_letter`, which durably inserts a
+`dead_letter_tasks` row for ops inspection/replay. Flower runs as the
+`flower` service in infra/docker-compose.yml (basic-auth, port 5555).
 """
 
 from __future__ import annotations

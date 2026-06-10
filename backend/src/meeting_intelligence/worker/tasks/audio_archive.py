@@ -36,6 +36,7 @@ from meeting_intelligence.config import get_settings
 from meeting_intelligence.db.engine import make_engine, make_session_factory
 from meeting_intelligence.db.rls import set_request_user
 from meeting_intelligence.worker.celery_app import celery_app
+from meeting_intelligence.worker.dead_letter import record_dead_letter
 
 log = logging.getLogger("meeting_intelligence.worker.audio_archive")
 
@@ -189,19 +190,32 @@ def archive_meeting_audio(
                 # `self.retry` is provided by `bind=True` above. mypy
                 # doesn't know — Celery's task type is dynamic.
                 raise self.retry(exc=exc, countdown=30)  # type: ignore[attr-defined]
-            except MaxRetriesExceededError:
+            except Retry:
+                # Celery raises `Retry` to signal the broker. Re-raise
+                # for it to do its thing.
+                raise
+            # NB: when `exc=` is passed, Celery re-raises *that* exception
+            # (not MaxRetriesExceededError) once retries are exhausted —
+            # both arms mean "retries exhausted, dead-letter it".
+            except (MaxRetriesExceededError, AudioArchiveError):
                 log.error(
                     "audio_archive.dead_letter meeting_id=%s reason=%s",
                     meeting_id,
                     exc,
                 )
-                # DoD line 160: surface a final dead-letter log line so an
-                # operator can grep for it. The temp file unlink in
-                # `finally` still runs.
-                raise
-            except Retry:
-                # Celery raises `Retry` to signal the broker. Re-raise
-                # for it to do its thing.
+                # DoD line 160: durable dead-letter row + greppable log
+                # line. The temp file unlink in `finally` still runs.
+                record_dead_letter(
+                    task_name="meeting_intelligence.archive_meeting_audio",
+                    task_id=getattr(getattr(self, "request", None), "id", None),
+                    args=None,
+                    kwargs={
+                        "meeting_id": meeting_id,
+                        "user_id": user_id,
+                        "wav_path": wav_path,
+                    },
+                    error=str(exc),
+                )
                 raise
     finally:
         try:

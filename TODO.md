@@ -124,9 +124,9 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] **US-13 — Data is private and secure**
   - [x] All API endpoints validate JWT and return 401 for unauthenticated requests — every authed route depends on `get_request_session`, which transitively depends on `get_current_user`; `tests/test_meetings_routes.py::test_*_requires_auth` covers the gate.
   - [x] DB queries scoped by user ID; no cross-user data leakage — RLS policies on `users`/`meetings`/`transcript_segments` keyed off `app.current_user_id`; `set_request_user` binds it per request. Cross-user 404 verified in `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting`.
-  - [ ] All data transmitted over TLS 1.3; HTTP rejected — infra-level concern, gated on the deploy boundary (Fly/ECS load balancer config).
+  - [ ] All data transmitted over TLS 1.3; HTTP rejected — `backend/fly.toml` now lands `force_https = true` (Fly edge terminates TLS and redirects plain HTTP); ticked after the first live deploy is verified (`curl -sI http://…` → redirect, `openssl s_client -tls1_3`), per docs/release-runbook.md.
   - [x] S3 objects not publicly accessible; downloads only via pre-signed URLs with 1 h expiry — `S3ObjectStorage.presigned_url` mints v4-signed URLs with `ExpiresIn=settings.audio_presigned_url_ttl_seconds` (default 3600). The S3 bucket itself is provisioned without public read; the only access path is through the API, which generates short-lived signed URLs. Local-disk dev path uses HMAC-signed tokens with the same TTL contract.
-  - [ ] Postgres and S3 encrypted at rest (AES-256) — infra-level concern.
+  - [ ] Postgres and S3 encrypted at rest (AES-256) — S3 half is now in-repo: every `put_object` (async + worker sync path) sets `ServerSideEncryption="AES256"` (`storage/s3.py`, covered by `tests/test_storage_s3.py`). Postgres half is the managed provider's volume encryption — ticked after the production DB plan is confirmed encrypted (runbook note).
 
 ### Functional Requirements
 
@@ -142,7 +142,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [x] **FR-2.10 (Must)** `PATCH /meetings/:id` updates title and tags — tag count + length validation in `_validate_tags`; `meetings.tags` column added in migration 0002.
 - [x] **FR-2.11 (Should)** `DELETE /meetings/:id/audio` removes S3 audio without deleting transcript — implemented in `api/meetings.py::delete_meeting_audio`; idempotent (204 even when no key); transcript segments untouched.
 - [x] **FR-2.12 (Must)** All DB queries scoped by user_id; Row Level Security enabled on all tables — every authenticated route uses `get_request_session`, which calls `set_request_user(session, user.id)` before yielding. Cross-user 404 verified by `tests/test_meetings_routes.py::test_user_b_cannot_read_user_a_meeting` and the WS-side `test_ws_rejects_meeting_owned_by_another_user`.
-- [ ] **FR-2.13 (Must)** All data over TLS 1.3; server rejects non-TLS connections — infra-level concern (deploy load balancer config); not a backend code change.
+- [ ] **FR-2.13 (Must)** All data over TLS 1.3; server rejects non-TLS connections — deploy config landed (`backend/fly.toml` `force_https = true`; Fly edge terminates TLS); ticked after live-deploy verification per docs/release-runbook.md.
 - [x] **FR-2.14 (Must)** Redis is the Celery broker for all background tasks — Celery app at `worker/celery_app.py` builds with `broker=settings.redis_url` (Redis 7 from compose). Compose `worker` service runs `celery -A meeting_intelligence.worker.celery_app worker -l info`. Audio archive is the first task (US-11); future tasks register under `worker/tasks/`.
 - [x] **FR-2.15 (Must)** Alembic manages all schema changes in version control
 
@@ -157,7 +157,7 @@ Phases are additive — do not start Phase N+1 until Phase N's DoD is fully gree
 - [ ] Alembic migrations exist for every schema change; clean DB can be built from scratch by running migrations
 - [ ] `GET /meetings` response time <500 ms for a user with 100 meetings (k6 or equivalent)
 - [ ] All new API endpoints have integration tests covering success and auth failure cases
-- [ ] Celery worker monitored via Flower; failed tasks retry up to 3 times before dead-lettering
+- [x] Celery worker monitored via Flower; failed tasks retry up to 3 times before dead-lettering — `flower` compose service (`infra/docker-compose.yml`, basic-auth, :5555) monitors the real worker; per-task `max_retries=3` was already enforced, and exhaustion now durably inserts a `dead_letter_tasks` row (migration `0008`, `worker/dead_letter.py`) instead of only logging. NB: fixed a latent bug — Celery re-raises the original `exc` (not `MaxRetriesExceededError`) when `retry(exc=…)` exhausts, so the old dead-letter handlers never fired; all three tasks now catch both. Covered by `tests/test_dead_letter.py`.
 
 ---
 
