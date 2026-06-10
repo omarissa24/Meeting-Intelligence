@@ -41,8 +41,36 @@ jobs:
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
 
-      # Tauri build. Signing secrets are optional at scaffold time —
-      # if they aren't set, tauri-action produces unsigned artifacts.
+      # Release guards (tag pushes only — workflow_dispatch builds are
+      # smoke builds and skip them):
+      #   1. The committed tauri.conf.json version must match the tag.
+      #      The version in the repo at the tag is the source of truth
+      #      (`scripts/release-desktop.sh` writes it); a mismatch means
+      #      the tag was cut by hand against the wrong commit.
+      #   2. The Tauri updater signing key must exist. Without it,
+      #      `createUpdaterArtifacts` produces no .sig files and the
+      #      published latest.json would brick the auto-update path.
+      - name: Verify tag matches tauri.conf.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          HAS_TAURI_SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          conf_version="$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$conf_version" != "$tag_version" ]; then
+            echo "::error::tauri.conf.json version ($conf_version) != tag ($tag_version). Cut releases with scripts/release-desktop.sh."
+            exit 1
+          fi
+          if [ "$HAS_TAURI_SIGNING_KEY" != "true" ]; then
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY secret is not set — updater artifacts would be unsigned and latest.json broken. See docs/release-runbook.md."
+            exit 1
+          fi
+
+      # Tauri build. Code-signing secrets are optional — if they aren't
+      # set, tauri-action produces unsigned artifacts (deliberate for
+      # Windows until an Authenticode cert exists; see the runbook).
       # The macOS-only Apple variables and the Windows-only certificate
       # variables are intentionally referenced; missing ones are ignored
       # by tauri-action.
@@ -63,5 +91,12 @@ jobs:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: "marens ${{ github.ref_name }}"
+          # Drafts are the go-live gate: the website download buttons and
+          # the backend /updates manifest endpoint both read only the
+          # latest *published* release. Publishing the draft ships it.
           releaseDraft: true
           prerelease: false
+          # Upload latest.json (per-platform url + .sig signature) to the
+          # release so the backend's GET /updates endpoint can serve it
+          # (FR-4.07).
+          includeUpdaterJson: true

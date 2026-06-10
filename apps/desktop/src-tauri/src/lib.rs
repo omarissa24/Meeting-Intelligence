@@ -673,6 +673,11 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::new().build())
         // Phase 6: OS notifications for detected meetings when backgrounded.
         .plugin(tauri_plugin_notification::init())
+        // US-24 auto-update. Endpoint + pubkey live in tauri.conf.json;
+        // the JS layer (use-update-checker) drives check/download/install
+        // so the banner can defer while a recording is active.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(RecordingState::default()))
         .manage(RecordingActiveFlag::default())
         .manage(OAuthState::default())

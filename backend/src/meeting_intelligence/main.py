@@ -11,6 +11,7 @@ from meeting_intelligence.api.meetings import router as meetings_router
 from meeting_intelligence.api.search import router as search_router
 from meeting_intelligence.api.storage import router as storage_router
 from meeting_intelligence.api.transcript import router as transcript_router
+from meeting_intelligence.api.updates import router as updates_router
 from meeting_intelligence.config import get_settings
 from meeting_intelligence.db.engine import make_engine, make_session_factory
 from meeting_intelligence.db.rls_check import assert_not_bypassing_rls
@@ -84,6 +85,7 @@ def create_app() -> FastAPI:
     app.include_router(search_router)
     app.include_router(transcript_router)
     app.include_router(storage_router)
+    app.include_router(updates_router)
     return app
 
 

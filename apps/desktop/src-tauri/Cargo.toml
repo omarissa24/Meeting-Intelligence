@@ -32,6 +32,13 @@ tauri-plugin-store = "2"
 # while the app is backgrounded. Sent from Rust via NotificationExt; needs
 # `notification:default` in capabilities/default.json.
 tauri-plugin-notification = "2"
+# US-24 auto-update: updater checks/downloads against the backend's
+# self-hosted manifest (GET /updates/...); process provides relaunch()
+# so "Restart to update" can swap binaries. The check/download/install
+# loop is driven from JS — the suppress-while-recording rule lives in
+# the React recording store, not here.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 # Cross-platform OS credential store wrapper. Picks up Keychain on macOS
 # and the Credential Manager on Windows (FFI under the hood — no file IO,
 # so no fs capability needed). The `apple-native` and `windows-native`

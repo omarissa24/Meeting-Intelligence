@@ -15,9 +15,11 @@ import { SessionEndedView } from "@/components/session-ended-view";
 import { SettingsSheet } from "@/components/settings-sheet";
 import { TranscriptPanel } from "@/components/transcript-panel";
 import { Button } from "@/components/ui/button";
+import { UpdateBanner } from "@/components/update-banner";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useMeetingDetection } from "@/hooks/use-meeting-detection";
 import { useRecording } from "@/hooks/use-recording";
+import { useUpdateChecker } from "@/hooks/use-update-checker";
 import { CLIENT_VERSION, IS_PRODUCTION } from "@/lib/config";
 import { canBrowseHistory } from "@/lib/recording-phase";
 import { cn } from "@/lib/utils";
@@ -49,6 +51,12 @@ export function AppShell() {
   const autoDetectMeetings = useSettingsStore((s) => s.autoDetectMeetings);
   const settingsHydrated = useSettingsStore((s) => s.hydrated);
   useMeetingDetection(settingsHydrated && autoDetectMeetings);
+
+  // US-24: check for updates on launch + daily; downloads happen in the
+  // background and the banner below only surfaces when a session isn't
+  // in flight. Production builds only — `tauri:dev` has no signed
+  // bundle to update against.
+  useUpdateChecker(IS_PRODUCTION);
 
   // Treat `stopping` and `stopped` as one rendering branch — the user
   // perceives "I clicked Stop" as instantaneous; the SessionEndedView
@@ -132,6 +140,8 @@ export function AppShell() {
           <SettingsSheet />
         </div>
       </header>
+
+      <UpdateBanner />
 
       <main className="flex flex-1 flex-col overflow-hidden px-8 pb-6">
         <div key={view} className="flex min-h-0 flex-1 animate-rise-in flex-col gap-6">

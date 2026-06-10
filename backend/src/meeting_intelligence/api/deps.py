@@ -25,9 +25,11 @@ from meeting_intelligence.embedding import (
 from meeting_intelligence.interfaces.auth import AuthProvider
 from meeting_intelligence.interfaces.embedding import EmbeddingProvider
 from meeting_intelligence.interfaces.llm import LLMProvider
+from meeting_intelligence.interfaces.releases import ReleaseManifest, ReleaseSource
 from meeting_intelligence.interfaces.storage import ObjectStorageProvider
 from meeting_intelligence.interfaces.stt import STTProvider
 from meeting_intelligence.llm import AnthropicClaudeLLM, InMemoryFakeLLM
+from meeting_intelligence.releases import GitHubReleaseSource, InMemoryFakeReleaseSource
 from meeting_intelligence.storage import LocalDiskObjectStorage, S3ObjectStorage
 from meeting_intelligence.stt.deepgram_nova import DeepgramNovaSTT
 from meeting_intelligence.stt.in_memory_echo import InMemoryEchoSTT
@@ -112,6 +114,42 @@ def _build_embedding_provider() -> EmbeddingProvider:
 
 def get_embedding_provider() -> EmbeddingProvider:
     return _build_embedding_provider()
+
+
+# --- Release source (desktop auto-update manifest) -------------------------
+
+
+@lru_cache(maxsize=1)
+def _build_release_source() -> ReleaseSource:
+    """Construct the release source once per process based on settings.
+
+    Default is `fake` so dev/CI serve no update (or a local latest.json
+    via UPDATES_FAKE_MANIFEST_PATH for simulated-update runs). Production
+    flips `UPDATES_PROVIDER=github` and supplies `UPDATES_GITHUB_REPO`.
+    Tests that need to reset between cases can clear the cache via
+    `_build_release_source.cache_clear()`.
+    """
+    settings = get_settings()
+    if settings.updates_provider == "github":
+        if not settings.updates_github_repo:
+            raise RuntimeError(
+                "UPDATES_PROVIDER=github requires UPDATES_GITHUB_REPO to be set"
+            )
+        return GitHubReleaseSource(
+            repo=settings.updates_github_repo,
+            token=settings.updates_github_token,
+            cache_ttl_seconds=settings.updates_cache_ttl_seconds,
+        )
+    manifest = None
+    if settings.updates_fake_manifest_path:
+        manifest = ReleaseManifest.model_validate_json(
+            Path(settings.updates_fake_manifest_path).read_text()
+        )
+    return InMemoryFakeReleaseSource(manifest)
+
+
+def get_release_source() -> ReleaseSource:
+    return _build_release_source()
 
 
 # --- Auth provider --------------------------------------------------------

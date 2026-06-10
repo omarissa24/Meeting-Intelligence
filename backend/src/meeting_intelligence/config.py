@@ -97,6 +97,22 @@ class Settings(BaseSettings):
     # same family ships at the same dim.
     embedding_model: str = "text-embedding-3-small"
 
+    # Desktop auto-update manifest (US-24 / FR-4.06). The GET /updates route
+    # is the "self-hosted update manifest" the DoD requires. "fake" serves
+    # the manifest at `updates_fake_manifest_path` (or nothing — the route
+    # 204s) for dev/test; "github" reads the latest *published* GitHub
+    # release's latest.json asset (produced by tauri-action).
+    updates_provider: Literal["fake", "github"] = "fake"
+    # "owner/repo" of the repository whose releases carry desktop bundles.
+    updates_github_repo: str | None = None
+    # Optional fine-grained read-only PAT. Only needed if the unauthenticated
+    # 60 req/hr GitHub limit ever bites — the TTL cache keeps us at ~12/hr.
+    updates_github_token: str | None = None
+    updates_cache_ttl_seconds: int = 300
+    # Dev-only: path to a local latest.json the fake source serves, enabling
+    # a full simulated-update E2E without publishing a GitHub release.
+    updates_fake_manifest_path: str | None = None
+
     # Auth
     workos_api_key: str | None = None
     workos_client_id: str | None = None
