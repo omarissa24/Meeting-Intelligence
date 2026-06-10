@@ -1,4 +1,4 @@
-# Meeting Intelligence
+# Marens
 
 Cross-platform desktop app that captures meeting audio, transcribes it, and produces LLM-summarised intelligence.
 
