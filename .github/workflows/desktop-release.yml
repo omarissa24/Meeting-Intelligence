@@ -68,6 +68,44 @@ jobs:
             exit 1
           fi
 
+      # Bake the backend URL into the frontend bundle. This MUST be a file
+      # on disk (.env.production), NOT an `env:` on the tauri-action step.
+      # tauri-action runs the Vite build indirectly, via the tauri CLI's
+      # `beforeBuildCommand` (`pnpm build`); that grandchild process does
+      # not reliably inherit step-level env vars, so v0.1.0 shipped pointing
+      # at http://localhost:8000 despite VITE_BACKEND_URL being set on the
+      # action. Vite loads `.env.production` straight from disk during
+      # `vite build` (production mode), so this is deterministic. The file
+      # is gitignored, so it never collides with a developer's local `.env`.
+      # Falls back to the prod Fly backend so an unset repo variable can't
+      # silently brick the release. Consumed by apps/desktop/src/lib/config.ts.
+      - name: Bake backend URL into the frontend build
+        shell: bash
+        run: |
+          echo "VITE_BACKEND_URL=${{ vars.VITE_BACKEND_URL || 'https://meeting-intelligence-api.fly.dev' }}" > apps/desktop/.env.production
+          echo "apps/desktop/.env.production:"
+          cat apps/desktop/.env.production
+
+      # Guard: build the frontend now and assert the prod URL actually
+      # baked in, FAILING the job before tauri-action publishes anything.
+      # v0.1.0 shipped a localhost build because nothing verified the bake;
+      # this is the regression test. The bundle always contains the
+      # localhost fallback *literal* from config.ts, so presence of the
+      # prod URL (only inlined when VITE_BACKEND_URL resolves) is the real
+      # signal. tauri-action rebuilds the frontend itself; this run is just
+      # the assertion (a few seconds of Vite).
+      - name: Verify backend URL baked into the frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${{ vars.VITE_BACKEND_URL || 'https://meeting-intelligence-api.fly.dev' }}"
+          pnpm --filter @meeting-intelligence/desktop build
+          if ! grep -rqF "$url" apps/desktop/dist; then
+            echo "::error::Frontend bundle in apps/desktop/dist does not reference $url — the backend URL did not bake in. Refusing to publish a localhost build."
+            exit 1
+          fi
+          echo "OK: frontend bundle references $url"
+
       # Tauri build. Code-signing secrets are optional — if they aren't
       # set, tauri-action produces unsigned artifacts (deliberate for
       # Windows until an Authenticode cert exists; see the runbook).
@@ -76,15 +114,6 @@ jobs:
       # by tauri-action.
       - uses: tauri-apps/tauri-action@v0
         env:
-          # Baked into the bundle at build time: the Vite build runs as a
-          # child of tauri-action (beforeBuildCommand: `pnpm build`) and
-          # inlines `import.meta.env.VITE_BACKEND_URL`. Without this the
-          # shipped app falls back to http://localhost:8000 (see
-          # apps/desktop/src/lib/config.ts) and the release is dead on
-          # arrival. Overridable via the VITE_BACKEND_URL repo variable;
-          # the literal default is the production Fly backend so an unset
-          # variable can't silently brick the release.
-          VITE_BACKEND_URL: ${{ vars.VITE_BACKEND_URL || 'https://meeting-intelligence-api.fly.dev' }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
