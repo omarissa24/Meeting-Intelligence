@@ -1,2 +1,5 @@
 /target
 /gen
+
+# CI bakes the prod BACKEND_URL here via [env]; never commit (would force local tauri:dev onto prod)
+/.cargo/config.toml

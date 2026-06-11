@@ -86,6 +86,29 @@ jobs:
           echo "apps/desktop/.env.production:"
           cat apps/desktop/.env.production
 
+      # Bake the backend URL into the RUST binary too. This is a SEPARATE
+      # code path from the frontend: the auth flow URL (auth_start_login ->
+      # /auth/authorize, exchange_code -> /auth/callback) is built by Rust's
+      # `auth::backend_url()`, which reads `option_env!("BACKEND_URL")` at
+      # COMPILE time and falls back to http://localhost:8000. VITE_BACKEND_URL
+      # never touches it — v0.1.1 had a correct frontend but still sent login
+      # to localhost for exactly this reason. A Cargo `[env]` config is the
+      # deterministic, propagation-proof way to feed `option_env!` (verified:
+      # it resolves even with no shell env var), mirroring .env.production for
+      # the frontend. The file is gitignored so it can't force a developer's
+      # local `tauri:dev` onto the prod backend. Keep this value aligned with
+      # VITE_BACKEND_URL above (see apps/desktop/src-tauri/src/auth/mod.rs).
+      - name: Bake backend URL into the Rust build
+        shell: bash
+        run: |
+          mkdir -p apps/desktop/src-tauri/.cargo
+          cat > apps/desktop/src-tauri/.cargo/config.toml <<EOF
+          [env]
+          BACKEND_URL = "${{ vars.VITE_BACKEND_URL || 'https://meeting-intelligence-api.fly.dev' }}"
+          EOF
+          echo "apps/desktop/src-tauri/.cargo/config.toml:"
+          cat apps/desktop/src-tauri/.cargo/config.toml
+
       # Guard: build the frontend now and assert the prod URL actually
       # baked in, FAILING the job before tauri-action publishes anything.
       # v0.1.0 shipped a localhost build because nothing verified the bake;
@@ -138,3 +161,30 @@ jobs:
           # release so the backend's GET /updates endpoint can serve it
           # (FR-4.07).
           includeUpdaterJson: true
+
+      # Post-build regression guard for the RUST backend URL. The frontend
+      # guard above can't see this: option_env!("BACKEND_URL") bakes the
+      # prod base into the binary as a plain UTF-8 &str (greppable), whereas
+      # the embedded frontend assets are brotli-compressed (not greppable).
+      # Its presence proves auth::backend_url() resolved to prod, not the
+      # localhost fallback — the check that was missing when v0.1.1 shipped
+      # a localhost auth flow. Runs after tauri-action (the draft is created
+      # but never published from a failed run), so a regression fails the
+      # job before the draft is ever published.
+      - name: Verify backend URL baked into the compiled binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${{ vars.VITE_BACKEND_URL || 'https://meeting-intelligence-api.fly.dev' }}"
+          bin="$(ls apps/desktop/src-tauri/target/release/meeting-intelligence-desktop \
+                    apps/desktop/src-tauri/target/release/meeting-intelligence-desktop.exe \
+                 2>/dev/null | head -1 || true)"
+          if [ -z "$bin" ]; then
+            echo "::error::release binary not found under target/release — cannot verify the bake"
+            exit 1
+          fi
+          if ! grep -aqF "$url" "$bin"; then
+            echo "::error::compiled binary ($bin) does not contain $url — Rust auth::backend_url() did not bake in (option_env! BACKEND_URL). Refusing to ship a localhost auth flow."
+            exit 1
+          fi
+          echo "OK: compiled binary references $url"
