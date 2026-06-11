@@ -17,6 +17,7 @@
     "replay": "cd backend && uv run python scripts/replay_audio.py",
     "fixture": "bash scripts/make-fixture-wav.sh",
     "icons": "bash scripts/make-tauri-icons.sh",
+    "dmg-bg": "node scripts/make-dmg-background.mjs",
     "test:api": "cd backend && uv run pytest",
     "test:ui": "pnpm --filter @meeting-intelligence/desktop test",
     "test": "pnpm test:api && pnpm test:ui",

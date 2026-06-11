@@ -122,8 +122,8 @@ export function AppShell() {
       <header className="flex items-center justify-between px-8 py-5">
         <h1 className="flex items-center leading-none">
           {/* marens logo (mark + wordmark) — theme-aware. */}
-          <img src={logo} alt="marens" className="h-8 w-auto dark:hidden" />
-          <img src={logoDark} alt="marens" className="hidden h-8 w-auto dark:block" />
+          <img src={logo} alt="Marens" className="h-8 w-auto dark:hidden" />
+          <img src={logoDark} alt="Marens" className="hidden h-8 w-auto dark:block" />
         </h1>
         <div className="flex items-center gap-1">
           {historyBrowsable && view === "recording" ? (

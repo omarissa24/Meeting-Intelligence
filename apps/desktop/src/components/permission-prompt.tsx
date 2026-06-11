@@ -44,7 +44,7 @@ export function PermissionPrompt({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-title">Allow marens to listen</DialogTitle>
+          <DialogTitle className="text-title">Allow Marens to listen</DialogTitle>
           <DialogDescription>
             Two macOS permissions are needed before the first recording. Both prompts will appear
             after you continue.

@@ -151,7 +151,7 @@ jobs:
         with:
           projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
-          releaseName: "marens ${{ github.ref_name }}"
+          releaseName: "Marens ${{ github.ref_name }}"
           # Drafts are the go-live gate: the website download buttons and
           # the backend /updates manifest endpoint both read only the
           # latest *published* release. Publishing the draft ships it.

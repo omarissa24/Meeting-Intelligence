@@ -37,8 +37,8 @@ export function LoginView() {
       {/* Brand lockup — centered in the space above the sign-in card so it has
           equal breathing room above and below. */}
       <div className="flex flex-1 items-center">
-        <img src={logo} alt="marens" className="h-9 w-auto dark:hidden" />
-        <img src={logoDark} alt="marens" className="hidden h-9 w-auto dark:block" />
+        <img src={logo} alt="Marens" className="h-9 w-auto dark:hidden" />
+        <img src={logoDark} alt="Marens" className="hidden h-9 w-auto dark:block" />
       </div>
 
       <div className="flex w-full max-w-sm animate-rise-in flex-col items-stretch gap-8 text-center">
@@ -85,12 +85,12 @@ export function LoginView() {
       {/* Wordmark signature, bottom left. */}
       <img
         src={wordmark}
-        alt="marens"
+        alt="Marens"
         className="absolute bottom-8 left-8 h-4 w-auto opacity-80 dark:hidden"
       />
       <img
         src={wordmarkDark}
-        alt="marens"
+        alt="Marens"
         className="absolute bottom-8 left-8 hidden h-4 w-auto opacity-80 dark:block"
       />
     </div>

@@ -2,17 +2,24 @@
 
 Tauri needs platform icons in this directory before `tauri build` succeeds.
 
-Generate from a single 1024×1024 source PNG:
+These are **generated**, not hand-edited. The source of truth is the raw Marens
+brand tile at `apps/web/brand-src/light-app-icon.png` (cream paper + dark
+waveform + amber dot). Regenerate the whole set with:
 
 ```bash
-pnpm --filter @meeting-intelligence/desktop tauri icon path/to/source.png
+pnpm icons          # cream tile, dark waveform (default)
+pnpm icons ink      # ink tile, cream waveform
 ```
 
-This produces:
+`scripts/make-tauri-icons.sh` resizes the brand tile to 1024×1024 and rounds the
+corners at the same 16% radius as the web app-icon tiles (so the desktop icon
+can't drift from the web one), writes `source.png`, then runs `tauri icon` to
+produce:
 
-- `32x32.png`, `128x128.png`, `128x128@2x.png`
-- `icon.icns` (macOS)
-- `icon.ico` (Windows)
-- platform-specific Square*.png variants
+- `32x32.png`, `64x64.png`, `128x128.png`, `128x128@2x.png`
+- `icon.icns` (macOS), `icon.ico` (Windows), `icon.png`
+- the Windows `Square*Logo.png` / `StoreLogo.png` tiles
+- the `ios/` and `android/` asset sets
 
-These files are intentionally not committed at scaffold time — they belong in the first frontend phase where the visual identity is decided. `tauri dev` will fail loudly if you try to run it before generating them.
+All of these **are committed** — CI (`tauri-action`) bundles the committed icons
+and does not run `tauri icon` itself, so regenerated icons must be checked in.

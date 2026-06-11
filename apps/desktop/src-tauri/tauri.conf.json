@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "marens",
+  "productName": "Marens",
   "version": "0.1.2",
   "identifier": "com.meeting-intelligence.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "marens",
+        "title": "Marens",
         "width": 1200,
         "height": 800,
         "minWidth": 900,
@@ -37,7 +37,14 @@
     ],
     "macOS": {
       "minimumSystemVersion": "13.0",
-      "entitlements": "Entitlements.plist"
+      "entitlements": "Entitlements.plist",
+      "dmg": {
+        "background": "dmg/background.png",
+        "windowSize": { "width": 660, "height": 420 },
+        "windowPosition": { "x": 400, "y": 200 },
+        "appPosition": { "x": 180, "y": 220 },
+        "applicationFolderPosition": { "x": 480, "y": 220 }
+      }
     }
   },
   "plugins": {
