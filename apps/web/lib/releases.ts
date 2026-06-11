@@ -8,11 +8,11 @@
  * and the UI shows a "Coming soon" state.
  *
  * Server-only: keeps the (rate-limited, unauthenticated) GitHub API call off the
- * client. Cached via ISR (`revalidate`), so new releases surface within an hour.
+ * client. Cached via ISR (`revalidate`), so new releases surface within five minutes.
  */
 
 const GITHUB_REPO = process.env.GITHUB_REPO ?? "omarissa24/Meeting-Intelligence";
-const REVALIDATE_SECONDS = 3600;
+const REVALIDATE_SECONDS = 300;
 
 /** Public repository URL — used for footer links and the "Coming soon" fallback. */
 export const REPO_URL = `https://github.com/${GITHUB_REPO}`;
